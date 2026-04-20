@@ -1,0 +1,25 @@
+{
+  "name": "@determinant/client",
+  "version": "1.0.0",
+  "description": "Determinant CLI client",
+  "type": "module",
+  "bin": {
+    "det": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "cli": "tsx src/cli.ts",
+    "run": "tsx src/run.ts"
+  },
+  "keywords": ["determinant", "client", "cli"],
+  "license": "MIT",
+  "dependencies": {
+    "@determinant/types": "file:../types"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

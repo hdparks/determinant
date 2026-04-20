@@ -1,0 +1,116 @@
+import { Task, TaskState, Node, HeapConfig, HeapPeekItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, ClaimTaskRequest, AgentClaim } from '@determinant/types';
+
+const DEFAULT_BASE_URL = process.env.DETERMINANT_SERVER_URL ?? 'http://localhost:10110';
+
+export class DeterminantClient {
+  private baseUrl: string;
+  private apiKey: string;
+
+  constructor(options?: { baseUrl?: string; apiKey?: string }) {
+    this.baseUrl = options?.baseUrl ?? DEFAULT_BASE_URL;
+    this.apiKey = options?.apiKey ?? process.env.DETERMINANT_API_KEY ?? '';
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>,
+    };
+
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error ?? `HTTP ${response.status}`);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json();
+  }
+
+  async health(): Promise<{ status: string }> {
+    return this.request('/api/health');
+  }
+
+  async listTasks(state?: TaskState): Promise<{ tasks: Task[] }> {
+    const query = state ? `?state=${state}` : '';
+    return this.request(`/api/tasks${query}`);
+  }
+
+  async createTask(req: CreateTaskRequest): Promise<{ task: Task }> {
+    return this.request('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async getTask(id: string): Promise<{ task: Task; nodes: Node[] }> {
+    return this.request(`/api/tasks/${id}`);
+  }
+
+  async updateTaskState(id: string, req: UpdateTaskStateRequest): Promise<{ task: Task }> {
+    return this.request(`/api/tasks/${id}/state`, {
+      method: 'PATCH',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async updateTaskPriority(id: string, req: UpdateTaskPriorityRequest): Promise<{ task: Task }> {
+    return this.request(`/api/tasks/${id}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async getQueue(state: TaskState, limit: number = 10): Promise<{ state: TaskState; items: HeapPeekItem[] }> {
+    return this.request(`/api/queue/${state}?limit=${limit}`);
+  }
+
+  async claimTask(req: ClaimTaskRequest): Promise<{ claim: AgentClaim }> {
+    return this.request('/api/claims', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async releaseClaim(id: string): Promise<void> {
+    return this.request(`/api/claims/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async renewClaim(id: string, ttlMinutes?: number): Promise<{ claim: AgentClaim }> {
+    return this.request(`/api/claims/${id}/renew`, {
+      method: 'POST',
+      body: JSON.stringify({ ttlMinutes }),
+    });
+  }
+
+  async cleanupClaims(): Promise<{ cleaned: number }> {
+    return this.request('/api/claims/cleanup', {
+      method: 'POST',
+    });
+  }
+
+  async getHeapConfig(): Promise<{ config: HeapConfig }> {
+    return this.request('/api/heap-config');
+  }
+
+  async updateHeapConfig(config: Partial<HeapConfig>): Promise<{ config: HeapConfig }> {
+    return this.request('/api/heap-config', {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    });
+  }
+}
