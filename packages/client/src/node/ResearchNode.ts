@@ -32,7 +32,7 @@ YOUR JOB:
    - Code examples or file references where relevant
    - Recommendations based on findings
 
-4. Return ONLY this JSON (no other text):
+4. Finally, respond with ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 how confident you were before research>,

@@ -54,7 +54,7 @@ curl -H "X-API-Key: your-key-here" http://localhost:10110/api/health
 List all tasks, optionally filtered by state.
 
 **Query params:**
-- `state` (optional): Filter by task state (Proposed, Planned, Executed, Verified, Released)
+- `state` (optional): Filter by task state (Proposal, Questions, Research, Plan, Implement, Validate, Released)
 
 **Response:**
 ```json
@@ -64,7 +64,7 @@ List all tasks, optionally filtered by state.
       "id": "01HZXXX...",
       "title": "Build API",
       "description": "...",
-      "state": "Proposed",
+      "state": "Proposal",
       "priority": 3,
       "manualWeight": 0,
       "createdAt": 1234567890,
@@ -105,8 +105,8 @@ Get task details with all workflow nodes.
       "id": "01HZXXX...",
       "taskId": "01HZXXX...",
       "parentId": null,
-      "fromState": "Proposed",
-      "toState": "Planned",
+      "fromState": "Proposal",
+      "toState": "Plan",
       "content": "...",
       "confidence": 8,
       "createdAt": 1234567890
@@ -121,7 +121,7 @@ Update task state.
 **Request body:**
 ```json
 {
-  "state": "Planned"
+  "state": "Plan"
 }
 ```
 
@@ -160,7 +160,7 @@ Get priority queue for a given state.
 **Response:**
 ```json
 {
-  "state": "Proposed",
+  "state": "Proposal",
   "items": [
     {
       "taskId": "01HZXXX...",

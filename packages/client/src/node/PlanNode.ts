@@ -78,7 +78,7 @@ YOUR JOB:
     const result = await this.generateContent(prompt);
     const markdown = await readFile(result.filePath, 'utf-8');
     const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
-    const childNode = Node.create(childData, this.client, this.config);
+    const childNode = await Node.create(childData, this.client, this.config);
     
     return { childNode, artifactPath: result.filePath };
   }

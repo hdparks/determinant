@@ -26,7 +26,7 @@ export interface ProcessResult {
  */
 export interface OpenCodeConfig {
   maxRetries?: number;           // Default: 3 (Ralph Loop)
-  timeout?: number;              // Default: 120000ms
+  timeout?: number;              // Default: 600000ms (10 minutes)
   model?: string;                // Optional model override
   variant?: string;              // Model variant (e.g., 'high', 'max') for extended thinking
   workingDir?: string;           // Default: process.cwd()

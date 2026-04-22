@@ -218,10 +218,10 @@ Options:
 Examples:
   det add --vibe="Implement login flow" --pin="Use JWT" --pin="Support OAuth" --hint="Check auth.ts"
   det add "Quick task vibe" --priority=1
-  det list Proposed
+  det list Proposal
   det get 01ABC...
   det queue --limit=20
-  det set-state 01ABC... Executed
+  det set-state 01ABC... Implement
   det heap-config --set=priorityWeight=0.7,confidenceWeight=0.3
 
 States: ${TASK_STATES.join(', ')}

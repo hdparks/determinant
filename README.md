@@ -9,7 +9,7 @@ Determinant is a lightweight task management system designed for agentic workflo
 ### Workflow Stages
 
 ```
-Proposed → Planned → Executed → Verified → Released
+Proposal → Questions → Research → Plan → Implement → Validate → Released
 ```
 
 ### Key Features
@@ -44,7 +44,7 @@ npm run dev:server
 # In another terminal, use the CLI
 npm run cli -- add "Implement user authentication"
 npm run cli -- list
-npm run cli -- queue Proposed
+npm run cli -- queue Proposal
 npm run cli -- get <task-id>
 ```
 
@@ -110,7 +110,7 @@ const task = createTask('Build API endpoint', 'Description here', 2);
 
 // Get next task from queue
 const heap = getHeap();
-const nextTaskId = heap.getNextTask('Proposed');
+const nextTaskId = heap.getNextTask('Proposal');
 
 // Create agent
 const agent = new (class extends BaseAgent {
@@ -140,11 +140,11 @@ See `packages/server/README.md` for API documentation.
 Each stage produces a markdown artifact with:
 
 ```markdown
-# Planned
+# Plan
 
 **Task:** Build API
 
-## Context from Proposed
+## Context from Proposal
 ...
 
 ## Technical Approach

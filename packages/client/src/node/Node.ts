@@ -36,7 +36,7 @@ export abstract class Node implements NodeInterface {
     this.client = client;
     this.config = {
       maxRetries: 3,
-      timeout: 120000,
+      timeout: 600000,
       workingDir: process.cwd(),
       verbose: true,
       ...config
@@ -148,6 +148,8 @@ export abstract class Node implements NodeInterface {
         if (model) args.push('--model', model);
         if (variant) {
           args.push('--variant', variant);
+        }
+        if (verbose) {
           args.push('--thinking');
         }
         args.push(prompt);

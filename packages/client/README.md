@@ -54,13 +54,13 @@ npm run cli -- add "Fix login bug" --priority=1
 List tasks, optionally filtered by state.
 
 **Arguments:**
-- `state` (optional) - Filter by state (Proposed, Planned, Executed, Verified, Released)
+- `state` (optional) - Filter by state (Proposal, Questions, Research, Plan, Implement, Validate, Released)
 
 **Examples:**
 ```bash
 npm run cli -- list
-npm run cli -- list Proposed
-npm run cli -- list Verified
+npm run cli -- list Proposal
+npm run cli -- list Validate
 ```
 
 **Aliases:** `ls`
@@ -82,7 +82,7 @@ npm run cli -- get 01HZXXX...
 Show the priority queue for a given state.
 
 **Arguments:**
-- `state` (optional) - State to view queue for (default: Proposed)
+- `state` (optional) - State to view queue for (default: Proposal)
 
 **Options:**
 - `--limit=N` - Maximum number of items to show (default: 10)
@@ -90,7 +90,7 @@ Show the priority queue for a given state.
 **Examples:**
 ```bash
 npm run cli -- queue
-npm run cli -- queue Planned --limit=20
+npm run cli -- queue Plan --limit=20
 ```
 
 **Aliases:** `q`
@@ -100,11 +100,11 @@ Manually update a task's state.
 
 **Arguments:**
 - `id` (required) - The task ID
-- `state` (required) - New state (Proposed, Planned, Executed, Verified, Released)
+- `state` (required) - New state (Proposal, Questions, Research, Plan, Implement, Validate, Released)
 
 **Examples:**
 ```bash
-npm run cli -- set-state 01HZXXX... Executed
+npm run cli -- set-state 01HZXXX... Implement
 ```
 
 ### `heap-config [--set=...]`
@@ -131,11 +131,13 @@ Show help message.
 
 Tasks progress through the following states:
 
-1. **Proposed** - New task, awaiting planning
-2. **Planned** - Plan created, ready for execution
-3. **Executed** - Work completed, awaiting verification
-4. **Verified** - Verified and ready for release
-5. **Released** - Released to production
+1. **Proposal** - Initial task proposal
+2. **Questions** - Clarifying questions gathered
+3. **Research** - Research and analysis completed
+4. **Plan** - Implementation plan created
+5. **Implement** - Work completed, ready for validation
+6. **Validate** - Validation and verification performed
+7. **Released** - Released to production
 
 ## Priority
 
@@ -163,10 +165,10 @@ const result = await client.createTask({
 const tasks = await client.listTasks();
 
 // Get queue
-const queue = await client.getQueue('Proposed', 10);
+const queue = await client.getQueue('Proposal', 10);
 
 // Update task state
-await client.updateTaskState(taskId, { state: 'Planned' });
+await client.updateTaskState(taskId, { state: 'Plan' });
 
 // Claim task
 const claim = await client.claimTask({ taskId, ttlMinutes: 30 });
