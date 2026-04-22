@@ -28,6 +28,7 @@ export interface OpenCodeConfig {
   maxRetries?: number;           // Default: 3 (Ralph Loop)
   timeout?: number;              // Default: 120000ms
   model?: string;                // Optional model override
+  variant?: string;              // Model variant (e.g., 'high', 'max') for extended thinking
   workingDir?: string;           // Default: process.cwd()
   verbose?: boolean;             // Default: true (show detailed logs)
 }

@@ -129,7 +129,7 @@ export abstract class Node implements NodeInterface {
    * Implements Ralph Loop for retries
    */
   protected async generateContent(prompt: string): Promise<AgentResult> {
-    const { maxRetries, timeout, workingDir, model, verbose } = this.config;
+    const { maxRetries, timeout, workingDir, model, variant, verbose } = this.config;
     
     if (verbose) {
       console.log(`\n🤖 Calling OpenCode for ${this.toStage} node...`);
@@ -143,9 +143,11 @@ export abstract class Node implements NodeInterface {
       try {
         // Build OpenCode command
         const modelFlag = model ? `--model ${model}` : '';
+        const variantFlag = variant ? `--variant ${variant}` : '';
+        const thinkingFlag = variant ? '--thinking' : '';
         // Escape the prompt for shell
         const escapedPrompt = prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
-        const command = `opencode run --format json --dangerously-skip-permissions ${modelFlag} "${escapedPrompt}"`;
+        const command = `opencode run --format json --dangerously-skip-permissions ${modelFlag} ${variantFlag} ${thinkingFlag} "${escapedPrompt}"`.trim();
         
         if (verbose && attempt > 1) {
           console.log(`   ⚠️  Retry attempt ${attempt}/${maxRetries}...`);
@@ -169,7 +171,34 @@ export abstract class Node implements NodeInterface {
         for (const line of lines) {
           try {
             const event = JSON.parse(line);
+            
+            // Display reasoning content in real-time (when verbose and thinking enabled)
+            if (event.type === 'reasoning' && event.part?.text) {
+              if (verbose) {
+                console.log(`\n   💭 Thinking...`);
+                const reasoningLines = event.part.text.split('\n');
+                reasoningLines.forEach((line: string) => {
+                  console.log(`      ${line}`);
+                });
+                
+                // Show timing if available
+                if (event.part.time) {
+                  const duration = ((event.part.time.end - event.part.time.start) / 1000).toFixed(2);
+                  console.log(`   ⏱️  Thinking took ${duration}s\n`);
+                }
+              }
+            }
+            
+            // Display text content in real-time (when verbose)
             if (event.type === 'text' && event.part?.text) {
+              if (verbose) {
+                console.log(`\n   📝 Response...`);
+                const textLines = event.part.text.split('\n');
+                textLines.forEach((line: string) => {
+                  console.log(`      ${line}`);
+                });
+              }
+              // Still collect text parts for parsing AgentResult
               textParts.push(event.part.text);
             }
           } catch (e) {
