@@ -4,6 +4,11 @@ import { readFile } from 'fs/promises';
 
 export class ResearchNode extends Node {
   async process(): Promise<ProcessResult> {
+    if (this.config.verbose) {
+      console.log(`\n🔍 Processing Research node ${this.id}`);
+      console.log(`   Conducting research to answer questions...`);
+    }
+    
     await this.ensureArtifactDir();
     
     const childId = this.generateId();
@@ -38,7 +43,11 @@ YOUR JOB:
     const result = await this.generateContent(prompt);
     const markdown = await readFile(result.filePath, 'utf-8');
     const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
-    const childNode = Node.create(childData, this.client, this.config);
+    const childNode = await Node.create(childData, this.client, this.config);
+    
+    if (this.config.verbose) {
+      console.log(`   🎯 Created child node: ${childNode.toStage}`);
+    }
     
     return { childNode, artifactPath: result.filePath };
   }

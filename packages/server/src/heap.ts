@@ -34,7 +34,7 @@ export class PriorityHeap {
   getQueue(limit?: number): QueueItem[] {
     const db = getDb();
     
-    // Fetch all nodes with their parent tasks
+    // Fetch all unprocessed nodes with their parent tasks
     const rows = db.prepare(`
       SELECT 
         n.id as nodeId,
@@ -46,6 +46,7 @@ export class PriorityHeap {
         n.confidence_before as confidenceBefore,
         n.confidence_after as confidenceAfter,
         n.created_at as nodeCreatedAt,
+        n.processed_at as processedAt,
         t.id as taskIdFull,
         t.vibe,
         t.pins,
@@ -58,6 +59,7 @@ export class PriorityHeap {
       FROM nodes n
       INNER JOIN tasks t ON n.task_id = t.id
       WHERE t.state != 'Released'
+        AND n.processed_at IS NULL
       ORDER BY n.created_at DESC
     `).all() as any[];
 
@@ -73,6 +75,7 @@ export class PriorityHeap {
         confidenceBefore: row.confidenceBefore,
         confidenceAfter: row.confidenceAfter,
         createdAt: new Date(row.nodeCreatedAt),
+        processedAt: row.processedAt ? new Date(row.processedAt) : null,
       };
 
       const task: Task = {

@@ -31,11 +31,13 @@ export function initDb(path: string = './determinant.db'): Database.Database {
       content TEXT DEFAULT '',
       confidence_before INTEGER CHECK(confidence_before >= 1 AND confidence_before <= 10),
       confidence_after INTEGER CHECK(confidence_after >= 1 AND confidence_after <= 10),
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      processed_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_nodes_task_id ON nodes(task_id);
     CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_node_id);
+    CREATE INDEX IF NOT EXISTS idx_nodes_processed_at ON nodes(processed_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
   `);
 

@@ -24,6 +24,7 @@ export interface Node {
   confidenceBefore: number | null;
   confidenceAfter: number | null;
   createdAt: Date;
+  processedAt: Date | null;
 }
 
 export interface TaskWithNodes extends Task {

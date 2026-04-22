@@ -43,7 +43,7 @@ async function exampleWorkflow() {
     console.log(`Node ID: ${latestNodeData.id}\n`);
     
     // 3. Create Node instance (factory returns correct subclass)
-    const latestNode = Node.create(latestNodeData, client);
+    const latestNode = await Node.create(latestNodeData, client);
     console.log(`Created ${latestNode.constructor.name} instance\n`);
     
     // Skip if already at final stage
@@ -104,7 +104,7 @@ async function simpleExample() {
   const latestNodeData = nodes[nodes.length - 1];
   
   // Create node instance
-  const node = Node.create(latestNodeData, client);
+  const node = await Node.create(latestNodeData, client);
   
   // Process and save - that's it!
   const result = await node.process();

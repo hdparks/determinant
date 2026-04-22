@@ -3,16 +3,28 @@ import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 
 export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3): Task {
   const db = getDb();
-  const id = newId();
+  const taskId = newId();
   const now = new Date().toISOString();
 
+  // Insert task
   db.prepare(`
     INSERT INTO tasks (id, vibe, pins, hints, state, priority, created_at, updated_at)
     VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?)
-  `).run(id, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, now, now);
+  `).run(taskId, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, now, now);
+
+  // Auto-create initial Proposal node
+  const proposalNodeId = newId();
+  const proposalContent = `# Vibe\n\n${vibe}\n\n` +
+    (pins.length > 0 ? `## Pins\n\n${pins.map(p => `- ${p}`).join('\n')}\n\n` : '') +
+    (hints.length > 0 ? `## Hints\n\n${hints.map(h => `- ${h}`).join('\n')}\n\n` : '');
+
+  db.prepare(`
+    INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, created_at, processed_at)
+    VALUES (?, ?, NULL, NULL, 'Proposal', ?, NULL, NULL, ?, NULL)
+  `).run(proposalNodeId, taskId, proposalContent.trim(), now);
 
   return {
-    id,
+    id: taskId,
     vibe,
     pins,
     hints,
@@ -125,8 +137,8 @@ export function createNode(
   const now = new Date().toISOString();
 
   db.prepare(`
-    INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, created_at, processed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
   `).run(id, taskId, parentNodeId, fromStage, toStage, content, confidenceBefore, confidenceAfter, now);
 
   db.prepare(`
@@ -143,6 +155,7 @@ export function createNode(
     confidenceBefore,
     confidenceAfter,
     createdAt: new Date(now),
+    processedAt: null,
   };
 }
 
@@ -150,7 +163,8 @@ export function getNode(id: string): Node | null {
   const db = getDb();
   const row = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
-           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, created_at as createdAt
+           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
+           created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE id = ?
   `).get(id) as any;
 
@@ -159,6 +173,7 @@ export function getNode(id: string): Node | null {
   return {
     ...row,
     createdAt: new Date(row.createdAt),
+    processedAt: row.processedAt ? new Date(row.processedAt) : null,
   };
 }
 
@@ -166,7 +181,8 @@ export function getNodesByTask(taskId: string): Node[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
-           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, created_at as createdAt
+           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
+           created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ?
     ORDER BY created_at ASC
   `).all(taskId) as any[];
@@ -174,6 +190,7 @@ export function getNodesByTask(taskId: string): Node[] {
   return rows.map(row => ({
     ...row,
     createdAt: new Date(row.createdAt),
+    processedAt: row.processedAt ? new Date(row.processedAt) : null,
   }));
 }
 
@@ -181,7 +198,8 @@ export function getLatestNode(taskId: string): Node | null {
   const db = getDb();
   const row = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
-           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, created_at as createdAt
+           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
+           created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ?
     ORDER BY created_at DESC
     LIMIT 1
@@ -192,6 +210,7 @@ export function getLatestNode(taskId: string): Node | null {
   return {
     ...row,
     createdAt: new Date(row.createdAt),
+    processedAt: row.processedAt ? new Date(row.processedAt) : null,
   };
 }
 
@@ -199,7 +218,8 @@ export function getNodesByStage(taskId: string, stage: TaskState): Node[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
-           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, created_at as createdAt
+           content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
+           created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ? AND to_stage = ?
     ORDER BY created_at ASC
   `).all(taskId, stage) as any[];
@@ -207,6 +227,7 @@ export function getNodesByStage(taskId: string, stage: TaskState): Node[] {
   return rows.map(row => ({
     ...row,
     createdAt: new Date(row.createdAt),
+    processedAt: row.processedAt ? new Date(row.processedAt) : null,
   }));
 }
 
@@ -246,6 +267,22 @@ export function updateNode(nodeId: string, updates: Partial<Node>): Node | null 
   `).run(...values);
   
   // Return updated node
+  return getNode(nodeId);
+}
+
+/**
+ * Mark a node as processed
+ */
+export function markNodeProcessed(nodeId: string): Node | null {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  db.prepare(`
+    UPDATE nodes
+    SET processed_at = ?
+    WHERE id = ?
+  `).run(now, nodeId);
+  
   return getNode(nodeId);
 }
 

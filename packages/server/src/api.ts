@@ -10,6 +10,7 @@ import {
   createNode,
   getNode,
   updateNode,
+  markNodeProcessed,
 } from './task-store.js';
 import { getHeap } from './heap.js';
 import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest } from '@determinant/types';
@@ -211,6 +212,24 @@ router.patch('/nodes/:nodeId', (req: Request, res: Response) => {
     res.json({ node: updatedNode });
   } catch (error) {
     console.error('Error updating node:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/nodes/:nodeId/processed', (req: Request, res: Response) => {
+  const nodeId = req.params.nodeId as string;
+
+  try {
+    const node = markNodeProcessed(nodeId);
+    
+    if (!node) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+
+    res.json({ node });
+  } catch (error) {
+    console.error('Error marking node as processed:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

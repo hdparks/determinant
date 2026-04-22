@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { DeterminantClient } from './client/index.js';
+import { Node } from './node/Node.js';
 
 interface CliArgs {
   command: string;
@@ -25,13 +26,58 @@ function parseArgs(args: string[]): CliArgs {
   return { command, args: filtered, flags };
 }
 
-async function cmdWork(client: DeterminantClient) {
-  // TODO: agent should loop until time-to-live runs out
-  // TODO: agent should get the next node from the queue (via getQueue)
-  // TODO: given an existing task, agent should be prompted with enough information to 1. perform the task at hand, and 2. return the necessary artifact
+async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
+  const startTime = Date.now();
+  const ttl = ttlSeconds * 1000; // Convert to milliseconds
+  let processed = 0;
+  let errors = 0;
+
+  console.log(`🚀 Worker started (TTL: ${ttlSeconds}s)\n`);
+
+  while (Date.now() - startTime < ttl) {
+    // Get next highest priority item from queue
+    const { items } = await client.getQueue(1);
+    
+    if (items.length === 0) {
+      // Queue empty - exit immediately
+      break;
+    }
+
+    const item = items[0];
+    
+    try {
+      // Create Node instance via factory pattern
+      const node = await Node.create(item.node, client);
+      
+      // Process node (calls OpenCode, generates artifact)
+      const result = await node.process();
+      
+      // Persist child node to database
+      await result.childNode.save();
+      
+      // Mark current node as processed to remove it from queue
+      await client.markNodeProcessed(item.node.id);
+      
+      // Minimal logging: task_vibe | FromStage → ToStage
+      const taskPreview = item.task.vibe.length > 50 
+        ? item.task.vibe.slice(0, 50) + '...'
+        : item.task.vibe;
+      console.log(`✅ ${taskPreview} | ${node.toStage} → ${result.childNode.toStage}`);
+      processed++;
+      
+    } catch (error) {
+      const err = error as Error;
+      console.error(`❌ Failed processing ${item.node.toStage} node ${item.node.id}: ${err.message}`);
+      errors++;
+      // Continue to next item
+    }
+  }
+
+  // Final statistics
+  const elapsed = Math.round((Date.now() - startTime) / 1000);
+  console.log(`\n📊 Processed: ${processed} | Errors: ${errors} | Time: ${elapsed}s`);
 }
 
-// TODO: Add a time-to-live for a given agent (make sure it doesn't just keep eating all the money)
 async function cmdHelp() {
   console.log(`
 determinant-run - Agent worker
@@ -41,6 +87,14 @@ Usage: det run <command> [options]
 Commands:
   work                    Start processing tasks from queue
   help                    Show this help
+
+Options:
+  --ttl=<seconds>         Time-to-live in seconds (default: 3600)
+
+Examples:
+  det run work                    # Process queue for 1 hour (default)
+  det run work --ttl=1800         # Process queue for 30 minutes
+  det run work --ttl=7200         # Process queue for 2 hours
 
 `);
 }
@@ -61,10 +115,13 @@ async function main() {
     process.exit(1);
   }
 
-switch (args.command) {
+  switch (args.command) {
     case 'work':
     case 'w':
-      await cmdWork(client);
+      {
+        const ttl = args.flags.ttl ? parseInt(args.flags.ttl as string, 10) : 3600;
+        await cmdWork(client, ttl);
+      }
       break;
     case 'help':
     case '-h':

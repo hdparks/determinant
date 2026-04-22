@@ -105,6 +105,16 @@ export class DeterminantClient {
     return response.node;
   }
 
+  /**
+   * Mark a node as processed
+   */
+  async markNodeProcessed(nodeId: string): Promise<Node> {
+    const response = await this.request<{ node: Node }>(`/api/nodes/${nodeId}/processed`, {
+      method: 'POST',
+    });
+    return response.node;
+  }
+
   async getQueue(limit: number = 10): Promise<{ items: QueueItem[] }> {
     return this.request(`/api/queue?limit=${limit}`);
   }

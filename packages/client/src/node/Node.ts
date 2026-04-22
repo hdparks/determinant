@@ -19,6 +19,7 @@ export abstract class Node implements NodeInterface {
   public confidenceBefore: number | null;
   public confidenceAfter: number | null;
   public readonly createdAt: Date;
+  public readonly processedAt: Date | null;
   
   // Additional properties
   protected readonly client: DeterminantClient;
@@ -34,11 +35,13 @@ export abstract class Node implements NodeInterface {
     this.confidenceBefore = data.confidenceBefore;
     this.confidenceAfter = data.confidenceAfter;
     this.createdAt = data.createdAt;
+    this.processedAt = data.processedAt;
     this.client = client;
     this.config = {
       maxRetries: 3,
       timeout: 120000,
       workingDir: process.cwd(),
+      verbose: true,
       ...config
     };
   }
@@ -46,25 +49,38 @@ export abstract class Node implements NodeInterface {
   /**
    * Factory method - returns correct subclass based on toStage
    */
-  static create(data: NodeInterface, client: DeterminantClient, config?: OpenCodeConfig): Node {
+  static async create(data: NodeInterface, client: DeterminantClient, config?: OpenCodeConfig): Promise<Node> {
     // Import subclasses dynamically to avoid circular dependencies
-    // We'll use require here since this is a factory pattern
-    const { ProposalNode } = require('./ProposalNode');
-    const { QuestionsNode } = require('./QuestionsNode');
-    const { ResearchNode } = require('./ResearchNode');
-    const { PlanNode } = require('./PlanNode');
-    const { ImplementNode } = require('./ImplementNode');
-    const { ValidateNode } = require('./ValidateNode');
-    const { ReleasedNode } = require('./ReleasedNode');
-    
+    // Using dynamic import() since we're in an ES module
     switch (data.toStage) {
-      case 'Proposal': return new ProposalNode(data, client, config);
-      case 'Questions': return new QuestionsNode(data, client, config);
-      case 'Research': return new ResearchNode(data, client, config);
-      case 'Plan': return new PlanNode(data, client, config);
-      case 'Implement': return new ImplementNode(data, client, config);
-      case 'Validate': return new ValidateNode(data, client, config);
-      case 'Released': return new ReleasedNode(data, client, config);
+      case 'Proposal': {
+        const { ProposalNode } = await import('./ProposalNode.js');
+        return new ProposalNode(data, client, config);
+      }
+      case 'Questions': {
+        const { QuestionsNode } = await import('./QuestionsNode.js');
+        return new QuestionsNode(data, client, config);
+      }
+      case 'Research': {
+        const { ResearchNode } = await import('./ResearchNode.js');
+        return new ResearchNode(data, client, config);
+      }
+      case 'Plan': {
+        const { PlanNode } = await import('./PlanNode.js');
+        return new PlanNode(data, client, config);
+      }
+      case 'Implement': {
+        const { ImplementNode } = await import('./ImplementNode.js');
+        return new ImplementNode(data, client, config);
+      }
+      case 'Validate': {
+        const { ValidateNode } = await import('./ValidateNode.js');
+        return new ValidateNode(data, client, config);
+      }
+      case 'Released': {
+        const { ReleasedNode } = await import('./ReleasedNode.js');
+        return new ReleasedNode(data, client, config);
+      }
       default: throw new Error(`Unknown TaskState: ${data.toStage}`);
     }
   }
@@ -100,7 +116,8 @@ export abstract class Node implements NodeInterface {
         toStage: this.toStage,
         content: this.content,
         confidenceBefore: this.confidenceBefore,
-        confidenceAfter: this.confidenceAfter
+        confidenceAfter: this.confidenceAfter,
+        processedAt: this.processedAt
       });
       // Update with server-generated values
       Object.assign(this, created);
@@ -112,7 +129,13 @@ export abstract class Node implements NodeInterface {
    * Implements Ralph Loop for retries
    */
   protected async generateContent(prompt: string): Promise<AgentResult> {
-    const { maxRetries, timeout, workingDir, model } = this.config;
+    const { maxRetries, timeout, workingDir, model, verbose } = this.config;
+    
+    if (verbose) {
+      console.log(`\n🤖 Calling OpenCode for ${this.toStage} node...`);
+      const promptPreview = prompt.length > 200 ? prompt.substring(0, 200) + '...' : prompt;
+      console.log(`   Prompt: ${promptPreview.replace(/\n/g, ' ')}`);
+    }
     
     let lastError: Error | null = null;
     
@@ -124,7 +147,15 @@ export abstract class Node implements NodeInterface {
         const escapedPrompt = prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
         const command = `opencode run --format json --dangerously-skip-permissions ${modelFlag} "${escapedPrompt}"`;
         
+        if (verbose && attempt > 1) {
+          console.log(`   ⚠️  Retry attempt ${attempt}/${maxRetries}...`);
+        }
+        
         // Execute OpenCode
+        if (verbose) {
+          console.log(`   ⏳ Executing OpenCode (timeout: ${timeout! / 1000}s)...`);
+        }
+        
         const { stdout, stderr } = await execAsync(command, {
           cwd: workingDir,
           timeout,
@@ -159,15 +190,27 @@ export abstract class Node implements NodeInterface {
         result.confidenceBefore = result.confidenceBefore ?? 5;
         result.confidenceAfter = result.confidenceAfter ?? 5;
         
+        if (verbose) {
+          console.log(`   ✅ OpenCode completed successfully`);
+          console.log(`   📄 Artifact: ${result.filePath}`);
+          console.log(`   📊 Confidence: ${result.confidenceBefore} → ${result.confidenceAfter}`);
+        }
+        
         return result;
         
       } catch (error) {
         lastError = error as Error;
-        console.error(`OpenCode attempt ${attempt}/${maxRetries} failed:`, error);
+        if (verbose) {
+          console.error(`   ❌ Attempt ${attempt}/${maxRetries} failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
         
         if (attempt < maxRetries!) {
           // Wait before retry (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          const waitTime = 1000 * attempt;
+          if (verbose) {
+            console.log(`   ⏸️  Waiting ${waitTime / 1000}s before retry...`);
+          }
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
     }
@@ -183,13 +226,23 @@ export abstract class Node implements NodeInterface {
    */
   protected async getAncestorByStage(stage: TaskState): Promise<Node | null> {
     let currentParentId = this.parentNodeId;
+    const visited: string[] = [];
     
     while (currentParentId) {
-      const parentNode = await this.client.getNode(currentParentId);
-      if (parentNode.toStage === stage) {
-        return Node.create(parentNode, this.client, this.config);
+      visited.push(currentParentId);
+      
+      try {
+        const parentNode = await this.client.getNode(currentParentId);
+        if (parentNode.toStage === stage) {
+          return await Node.create(parentNode, this.client, this.config);
+        }
+        currentParentId = parentNode.parentNodeId;
+      } catch (error) {
+        throw new Error(
+          `Failed to fetch parent node ${currentParentId} while looking for ${stage} ancestor. ` +
+          `Current node: ${this.id} (${this.toStage}), visited chain: ${visited.join(' → ')}`
+        );
       }
-      currentParentId = parentNode.parentNodeId;
     }
     
     return null;
@@ -201,7 +254,10 @@ export abstract class Node implements NodeInterface {
   protected async getAncestorContent(stage: TaskState): Promise<string> {
     const ancestor = await this.getAncestorByStage(stage);
     if (!ancestor) {
-      throw new Error(`Could not find ancestor node with stage: ${stage}`);
+      throw new Error(
+        `Could not find ancestor node with stage: ${stage}. ` +
+        `Current node: ${this.id} (${this.toStage}), parent: ${this.parentNodeId || 'none'}`
+      );
     }
     return ancestor.content;
   }
@@ -235,7 +291,8 @@ export abstract class Node implements NodeInterface {
       content,
       confidenceBefore,
       confidenceAfter,
-      createdAt: new Date()
+      createdAt: new Date(),
+      processedAt: null
     };
   }
   

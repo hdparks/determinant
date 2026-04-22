@@ -4,6 +4,11 @@ import { writeFile } from 'fs/promises';
 
 export class ProposalNode extends Node {
   async process(): Promise<ProcessResult> {
+    if (this.config.verbose) {
+      console.log(`\n📋 Processing Proposal node ${this.id}`);
+      console.log(`   Creating proposal document from task data...`);
+    }
+    
     await this.ensureArtifactDir();
     
     const childId = this.generateId();
@@ -35,6 +40,10 @@ export class ProposalNode extends Node {
     // Write markdown file directly (no OpenCode call)
     await writeFile(artifactPath, markdown.trim(), 'utf-8');
     
+    if (this.config.verbose) {
+      console.log(`   ✅ Proposal document created at ${artifactPath}`);
+    }
+    
     // Create child node data with default confidence scores
     const childData = this.createChildNodeData(
       markdown.trim(),
@@ -43,7 +52,11 @@ export class ProposalNode extends Node {
     );
     
     // Create child node instance (will be QuestionsNode)
-    const childNode = Node.create(childData, this.client, this.config);
+    const childNode = await Node.create(childData, this.client, this.config);
+    
+    if (this.config.verbose) {
+      console.log(`   🎯 Created child node: ${childNode.toStage}`);
+    }
     
     return {
       childNode,

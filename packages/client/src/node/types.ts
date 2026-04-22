@@ -29,6 +29,7 @@ export interface OpenCodeConfig {
   timeout?: number;              // Default: 120000ms
   model?: string;                // Optional model override
   workingDir?: string;           // Default: process.cwd()
+  verbose?: boolean;             // Default: true (show detailed logs)
 }
 
 // Re-export for convenience

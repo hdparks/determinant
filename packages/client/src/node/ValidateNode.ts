@@ -5,6 +5,11 @@ import { readFile } from 'fs/promises';
 
 export class ValidateNode extends Node {
   async process(): Promise<ProcessResult> {
+    if (this.config.verbose) {
+      console.log(`\n✅ Processing Validate node ${this.id}`);
+      console.log(`   Running verification tests...`);
+    }
+    
     await this.ensureArtifactDir();
     
     const childId = this.generateId();
@@ -51,11 +56,18 @@ YOUR JOB:
     const result = await this.generateContent(prompt);
     const markdown = await readFile(result.filePath, 'utf-8');
     
+    if (this.config.verbose) {
+      console.log(`   ${result.status === 'success' ? '✅ Validation SUCCESS' : '❌ Validation FAILURE'}`);
+    }
+    
     // CONDITIONAL LOGIC: Create different child based on success/failure
     let childData: NodeInterface;
     
     if (result.status === 'success') {
       // Success: create Released node (normal progression)
+      if (this.config.verbose) {
+        console.log(`   🎉 Task complete! Creating Released node...`);
+      }
       childData = this.createChildNodeData(
         markdown, 
         result.confidenceBefore!, 
@@ -63,6 +75,9 @@ YOUR JOB:
       );
     } else {
       // Failure: create Plan node for repair cycle
+      if (this.config.verbose) {
+        console.log(`   🔄 Creating repair Plan node to fix issues...`);
+      }
       // Override toStage to be 'Plan' instead of next stage
       childData = {
         id: this.generateId(),
@@ -73,11 +88,16 @@ YOUR JOB:
         content: markdown,  // Validation failure report becomes plan input
         confidenceBefore: result.confidenceBefore!,
         confidenceAfter: result.confidenceAfter!,
-        createdAt: new Date()
+        createdAt: new Date(),
+        processedAt: null
       };
     }
     
-    const childNode = Node.create(childData, this.client, this.config);
+    const childNode = await Node.create(childData, this.client, this.config);
+    
+    if (this.config.verbose) {
+      console.log(`   🎯 Created child node: ${childNode.toStage}`);
+    }
     
     return { childNode, artifactPath: result.filePath };
   }
