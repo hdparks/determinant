@@ -73,6 +73,28 @@ export class DeterminantClient {
     });
   }
 
+  /**
+   * Create a new node in the system
+   */
+  async createNode(nodeData: Omit<Node, 'id' | 'createdAt'>): Promise<Node> {
+    const response = await this.request<{ node: Node }>(`/api/tasks/${nodeData.taskId}/nodes`, {
+      method: 'POST',
+      body: JSON.stringify(nodeData),
+    });
+    return response.node;
+  }
+
+  /**
+   * Update an existing node
+   */
+  async updateNode(nodeId: string, updates: Partial<Node>): Promise<Node> {
+    const response = await this.request<{ node: Node }>(`/api/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    return response.node;
+  }
+
   async getQueue(state: TaskState, limit: number = 10): Promise<{ state: TaskState; items: HeapPeekItem[] }> {
     return this.request(`/api/queue/${state}?limit=${limit}`);
   }

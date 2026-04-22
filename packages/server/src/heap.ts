@@ -33,7 +33,7 @@ export class PriorityHeap {
   getQueueForState(state: TaskState, limit: number = 10): QueueItem[] {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT id, title, description, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+      SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
       FROM tasks WHERE state = ?
       ORDER BY created_at DESC
     `).all(state) as any[];
@@ -42,6 +42,8 @@ export class PriorityHeap {
       .map(row => {
         const task: Task = {
           ...row,
+          pins: JSON.parse(row.pins),
+          hints: JSON.parse(row.hints),
           state: row.state as TaskState,
           priority: row.priority,
           manualWeight: row.manualWeight,
@@ -71,7 +73,7 @@ export class PriorityHeap {
   peek(state: TaskState, limit: number = 10): HeapPeekItem[] {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT id, title, description, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+      SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
       FROM tasks WHERE state = ?
       ORDER BY created_at DESC
     `).all(state) as any[];
@@ -80,6 +82,8 @@ export class PriorityHeap {
       .map(row => {
         const task: Task = {
           ...row,
+          pins: JSON.parse(row.pins),
+          hints: JSON.parse(row.hints),
           state: row.state as TaskState,
           priority: row.priority,
           manualWeight: row.manualWeight,

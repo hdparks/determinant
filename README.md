@@ -21,29 +21,36 @@ Proposed → Planned → Executed → Verified → Released
 - **Agent claiming** - Optimistic locking to prevent concurrent work on same task
 - **Siloed agents** - Each agent works independently without inter-agent communication
 
+## Project Structure
+
+This is a monorepo with three packages:
+
+- **`packages/server`** - Express API server with SQLite database
+- **`packages/client`** - CLI tool for interacting with the server
+- **`packages/types`** - Shared TypeScript types
+
 ## Quick Start
 
 ```bash
-# Install
+# Install all dependencies
 npm install
 
-# Build
+# Build all packages
 npm run build
 
-# Create a task
-node dist/cli.js add "Implement user authentication"
+# Run the server
+npm run dev:server
 
-# List tasks
-node dist/cli.js list
-
-# View queue
-node dist/cli.js queue Proposed
-
-# Get task details
-node dist/cli.js get <task-id>
+# In another terminal, use the CLI
+npm run cli -- add "Implement user authentication"
+npm run cli -- list
+npm run cli -- queue Proposed
+npm run cli -- get <task-id>
 ```
 
 ## CLI Commands
+
+Use `npm run cli -- <command>` to run CLI commands:
 
 | Command | Description |
 |---------|-------------|
@@ -53,6 +60,8 @@ node dist/cli.js get <task-id>
 | `queue [state]` | Show priority queue |
 | `set-state <id> <state>` | Manually set task state |
 | `heap-config [--set=...]` | Configure heap weights |
+
+See `packages/client/README.md` for more details.
 
 ## Architecture
 
@@ -80,18 +89,18 @@ Higher score = higher priority to process.
 
 ```bash
 # View current config
-node dist/cli.js heap-config
+npm run cli -- heap-config
 
 # Adjust weights (values should sum to 1.0)
-node dist/cli.js heap-config --set=priorityWeight=0.7,confidenceWeight=0.3,manualWeight=0.0
+npm run cli -- heap-config --set=priorityWeight=0.7,confidenceWeight=0.3,manualWeight=0.0
 ```
 
 ## Programmatic Usage
 
 ```typescript
-import { initDb, createTask, getTasksByState } from './index.js';
-import { getHeap } from './heap.js';
-import { BaseAgent, createLLMClient, AgentConfig } from './agents/base.js';
+import { initDb, createTask, getTasksByState } from '@determinant/server';
+import { getHeap } from '@determinant/server/heap';
+import { BaseAgent, createLLMClient, AgentConfig } from '@determinant/server/agents/base';
 
 // Initialize
 initDb('./determinant.db');
@@ -123,6 +132,8 @@ const agent = new (class extends BaseAgent {
 const result = await agent.claimAndProcess(task.id);
 console.log(result.success);
 ```
+
+See `packages/server/README.md` for API documentation.
 
 ## Artifact Format
 

@@ -1,20 +1,21 @@
 import { getDb, newId } from './db.js';
 import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 
-export function createTask(title: string, description: string = '', priority: number = 3): Task {
+export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3): Task {
   const db = getDb();
   const id = newId();
   const now = new Date().toISOString();
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, state, priority, created_at, updated_at)
-    VALUES (?, ?, ?, 'Proposed', ?, ?, ?)
-  `).run(id, title, description, priority, now, now);
+    INSERT INTO tasks (id, vibe, pins, hints, state, priority, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'Proposed', ?, ?, ?)
+  `).run(id, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, now, now);
 
   return {
     id,
-    title,
-    description,
+    vibe,
+    pins,
+    hints,
     state: 'Proposed',
     priority,
     manualWeight: 0,
@@ -26,7 +27,7 @@ export function createTask(title: string, description: string = '', priority: nu
 export function getTask(id: string): Task | null {
   const db = getDb();
   const row = db.prepare(`
-    SELECT id, title, description, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE id = ?
   `).get(id) as any;
 
@@ -34,6 +35,8 @@ export function getTask(id: string): Task | null {
 
   return {
     ...row,
+    pins: JSON.parse(row.pins),
+    hints: JSON.parse(row.hints),
     state: row.state as TaskState,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
@@ -43,13 +46,15 @@ export function getTask(id: string): Task | null {
 export function getTasksByState(state: TaskState): Task[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, title, description, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE state = ?
     ORDER BY created_at DESC
   `).all(state) as any[];
 
   return rows.map(row => ({
     ...row,
+    pins: JSON.parse(row.pins),
+    hints: JSON.parse(row.hints),
     state: row.state as TaskState,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
@@ -59,12 +64,14 @@ export function getTasksByState(state: TaskState): Task[] {
 export function getAllTasks(): Task[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, title, description, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
     FROM tasks ORDER BY created_at DESC
   `).all() as any[];
 
   return rows.map(row => ({
     ...row,
+    pins: JSON.parse(row.pins),
+    hints: JSON.parse(row.hints),
     state: row.state as TaskState,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
@@ -201,6 +208,45 @@ export function getNodesByStage(taskId: string, stage: TaskState): Node[] {
     ...row,
     createdAt: new Date(row.createdAt),
   }));
+}
+
+/**
+ * Update an existing node
+ */
+export function updateNode(nodeId: string, updates: Partial<Node>): Node | null {
+  const node = getNode(nodeId);
+  if (!node) {
+    return null;
+  }
+  
+  const db = getDb();
+  const allowedFields = ['content', 'confidenceBefore', 'confidenceAfter'];
+  const updateFields: string[] = [];
+  const values: any[] = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+      // Convert camelCase to snake_case for SQL
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      updateFields.push(`${snakeKey} = ?`);
+      values.push(value);
+    }
+  }
+  
+  if (updateFields.length === 0) {
+    return node; // No valid updates
+  }
+  
+  values.push(nodeId);
+  
+  db.prepare(`
+    UPDATE nodes
+    SET ${updateFields.join(', ')}
+    WHERE id = ?
+  `).run(...values);
+  
+  // Return updated node
+  return getNode(nodeId);
 }
 
 export function getTaskWithNodes(taskId: string): { task: Task; nodes: Node[] } | null {

@@ -4,8 +4,9 @@ export const TASK_STATES: TaskState[] = ['Proposed', 'Planned', 'Executed', 'Ver
 
 export interface Task {
   id: string;
-  title: string;
-  description: string;
+  vibe: string;
+  pins: string[];
+  hints: string[];
   state: TaskState;
   priority: number;
   manualWeight: number;
@@ -54,8 +55,9 @@ export interface AgentClaim {
 }
 
 export interface CreateTaskRequest {
-  title: string;
-  description?: string;
+  vibe: string;
+  pins?: string[];
+  hints?: string[];
   priority?: number;
 }
 

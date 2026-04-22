@@ -7,6 +7,8 @@ import {
   updateTaskState,
   updateTaskPriority,
   getTaskWithNodes,
+  createNode,
+  updateNode,
 } from './task-store.js';
 import { claimNode, releaseClaim, renewClaim, getClaim, getClaimByNode, cleanupExpiredClaims } from './queue.js';
 import { getHeap } from './heap.js';
@@ -57,13 +59,15 @@ router.get('/tasks', (req: Request, res: Response) => {
 router.post('/tasks', (req: Request, res: Response) => {
   const body = req.body as CreateTaskRequest;
 
-  if (!body.title) {
-    res.status(400).json({ error: 'Title is required' });
+  if (!body.vibe) {
+    res.status(400).json({ error: 'Vibe is required' });
     return;
   }
 
   const priority = body.priority ?? 3;
-  const task = createTask(body.title, body.description ?? '', priority);
+  const pins = body.pins ?? [];
+  const hints = body.hints ?? [];
+  const task = createTask(body.vibe, pins, hints, priority);
 
   res.status(201).json({ task });
 });
@@ -124,6 +128,73 @@ router.patch('/tasks/:id/priority', (req: Request, res: Response) => {
   }
 
   res.json({ task });
+});
+
+// Node routes
+router.post('/tasks/:taskId/nodes', (req: Request, res: Response) => {
+  const taskId = req.params.taskId as string;
+  const {
+    toStage,
+    content,
+    parentNodeId = null,
+    fromStage = null,
+    confidenceBefore = null,
+    confidenceAfter = null
+  } = req.body;
+
+  // Validate required fields
+  if (!toStage || content === undefined) {
+    res.status(400).json({ error: 'Missing required fields: toStage, content' });
+    return;
+  }
+
+  // Validate toStage
+  if (!TASK_STATES.includes(toStage as TaskState)) {
+    res.status(400).json({ error: `Invalid toStage. Valid: ${TASK_STATES.join(', ')}` });
+    return;
+  }
+
+  // Validate task exists
+  const task = getTask(taskId);
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+
+  try {
+    const node = createNode(
+      taskId,
+      toStage,
+      content,
+      parentNodeId,
+      fromStage,
+      confidenceBefore,
+      confidenceAfter
+    );
+    res.status(201).json({ node });
+  } catch (error) {
+    console.error('Error creating node:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/nodes/:nodeId', (req: Request, res: Response) => {
+  const nodeId = req.params.nodeId as string;
+  const updates = req.body;
+
+  try {
+    const updatedNode = updateNode(nodeId, updates);
+    
+    if (!updatedNode) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+
+    res.json({ node: updatedNode });
+  } catch (error) {
+    console.error('Error updating node:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.get('/queue/:state', (req: Request, res: Response) => {

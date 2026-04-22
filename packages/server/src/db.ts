@@ -12,8 +12,9 @@ export function initDb(path: string = './determinant.db'): Database.Database {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT DEFAULT '',
+      vibe TEXT NOT NULL,
+      pins TEXT DEFAULT '[]',
+      hints TEXT DEFAULT '[]',
       state TEXT NOT NULL CHECK(state IN ('Proposed', 'Planned', 'Executed', 'Verified', 'Released')),
       priority INTEGER DEFAULT 3 CHECK(priority >= 1 AND priority <= 5),
       manual_weight INTEGER DEFAULT 0,

@@ -6,17 +6,25 @@ import { TaskState, TASK_STATES } from '@determinant/types';
 interface CliArgs {
   command: string;
   args: string[];
-  flags: Record<string, string | boolean>;
+  flags: Record<string, string | boolean | string[]>;
 }
 
 function parseArgs(args: string[]): CliArgs {
   const command = args[0] ?? 'help';
   const rest = args.slice(1);
-  const flags: Record<string, string | boolean> = {};
+  const flags: Record<string, string | boolean | string[]> = {};
 
   const filtered = rest.filter((arg) => {
     if (arg.startsWith('--')) {
       const [key, value] = arg.slice(2).split('=');
+      // Handle repeatable flags (pin, hint)
+      if (key === 'pin' || key === 'hint') {
+        if (!flags[key]) {
+          flags[key] = [];
+        }
+        (flags[key] as string[]).push(value);
+        return false;
+      }
       flags[key] = value ?? true;
       return false;
     }
@@ -37,27 +45,43 @@ async function cmdList(client: DeterminantClient, args: CliArgs) {
 
   console.log(`\nTasks (${result.tasks.length}):\n`);
   for (const task of result.tasks) {
-    console.log(`  ${task.id.slice(-8)} | ${task.state.padEnd(10)} | pri:${task.priority} | ${task.title}`);
+    console.log(`  ${task.id.slice(-8)} | ${task.state.padEnd(10)} | pri:${task.priority} | ${task.vibe}`);
   }
 }
 
 async function cmdAdd(client: DeterminantClient, args: CliArgs) {
-  const title = args.args.join(' ');
+  const vibe = args.flags.vibe ? String(args.flags.vibe) : args.args.join(' ');
   const priority = args.flags.priority ? parseInt(String(args.flags.priority), 10) : 3;
+  const pinsRaw = args.flags.pin;
+  const hintsRaw = args.flags.hint;
+  
+  const pins = Array.isArray(pinsRaw) ? pinsRaw.filter((p): p is string => typeof p === 'string') : 
+               (pinsRaw && typeof pinsRaw === 'string' ? [pinsRaw] : []);
+  const hints = Array.isArray(hintsRaw) ? hintsRaw.filter((h): h is string => typeof h === 'string') : 
+                (hintsRaw && typeof hintsRaw === 'string' ? [hintsRaw] : []);
 
-  if (!title) {
-    console.error('Error: Title required');
-    console.error('Usage: det add "<title>" [--priority=1-5]');
+  if (!vibe) {
+    console.error('Error: Vibe required');
+    console.error('Usage: det add --vibe="..." [--pin="..." --hint="..." --priority=1-5]');
+    console.error('   or: det add "<vibe>" [--pin="..." --hint="..." --priority=1-5]');
     process.exit(1);
   }
 
-  const result = await client.createTask({ title, priority });
+  const result = await client.createTask({ vibe, pins, hints, priority });
   const task = result.task;
 
   console.log(`Created task: ${task.id}`);
-  console.log(`  Title: ${task.title}`);
+  console.log(`  Vibe: ${task.vibe}`);
   console.log(`  Priority: ${task.priority}`);
   console.log(`  State: ${task.state}`);
+  if (task.pins.length > 0) {
+    console.log(`  Pins:`);
+    task.pins.forEach(pin => console.log(`    - ${pin}`));
+  }
+  if (task.hints.length > 0) {
+    console.log(`  Hints:`);
+    task.hints.forEach(hint => console.log(`    - ${hint}`));
+  }
 }
 
 async function cmdGet(client: DeterminantClient, args: CliArgs) {
@@ -72,13 +96,22 @@ async function cmdGet(client: DeterminantClient, args: CliArgs) {
   const result = await client.getTask(id);
   const full = result;
 
-  console.log(`\n## Task: ${full.task.title}`);
+  console.log(`\n## Task: ${full.task.vibe}`);
   console.log(`ID: ${full.task.id}`);
   console.log(`State: ${full.task.state}`);
   console.log(`Priority: ${full.task.priority}`);
   console.log(`Created: ${full.task.createdAt}`);
   console.log(`Updated: ${full.task.updatedAt}`);
-
+  
+  if (full.task.pins.length > 0) {
+    console.log(`\nPins:`);
+    full.task.pins.forEach(pin => console.log(`  - ${pin}`));
+  }
+  
+  if (full.task.hints.length > 0) {
+    console.log(`\nHints:`);
+    full.task.hints.forEach(hint => console.log(`  - ${hint}`));
+  }
   if (full.nodes.length > 0) {
     console.log(`\n## Nodes (${full.nodes.length}):`);
     for (const node of full.nodes) {
@@ -108,7 +141,7 @@ async function cmdQueue(client: DeterminantClient, args: CliArgs) {
 
   console.log(`\nQueue for ${state} (sorted by priority):\n`);
   for (const item of result.items) {
-    console.log(`  ${item.task.id.slice(-8)} | score:${item.score.toFixed(2)} | conf:${item.confidence ?? 'N/A'} | ${item.task.title}`);
+    console.log(`  ${item.task.id.slice(-8)} | score:${item.score.toFixed(2)} | conf:${item.confidence ?? 'N/A'} | ${item.task.vibe}`);
   }
 }
 
@@ -167,7 +200,7 @@ determinant - Agentic workflow pipeline
 Usage: det <command> [options]
 
 Commands:
-  add <title>               Create a new task
+  add --vibe="..."          Create a new task with vibe (goal/user story)
   list [state]              List tasks (optionally by state)
   get <task-id>             Get task details with nodes
   queue [state]             Show priority queue for state
@@ -176,13 +209,17 @@ Commands:
   help                    Show this help
 
 Options:
+  --vibe="..."             Task vibe (thesis/goal statement) [required for add]
+  --pin="..."              Acceptance criteria (can be repeated)
+  --hint="..."             Additional context (can be repeated)
   --priority=1-5           Set task priority (1 highest, 5 lowest)
   --state=<state>           Filter by state
   --limit=N                 Limit results
   --set=key=value,...       Set heap config values
 
 Examples:
-  det add "Implement login flow"
+  det add --vibe="Implement login flow" --pin="Use JWT" --pin="Support OAuth" --hint="Check auth.ts"
+  det add "Quick task vibe" --priority=1
   det list Proposed
   det get 01ABC...
   det queue Proposed

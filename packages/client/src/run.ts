@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { DeterminantClient } from './client/index.js';
-import { TaskState, TASK_STATES } from '@determinant/types';
 
 interface CliArgs {
   command: string;
