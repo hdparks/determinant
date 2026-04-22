@@ -49,17 +49,21 @@ export abstract class Node implements NodeInterface {
   static create(data: NodeInterface, client: DeterminantClient, config?: OpenCodeConfig): Node {
     // Import subclasses dynamically to avoid circular dependencies
     // We'll use require here since this is a factory pattern
-    const { ProposedNode } = require('./ProposedNode');
-    const { PlannedNode } = require('./PlannedNode');
-    const { ExecutedNode } = require('./ExecutedNode');
-    const { VerifiedNode } = require('./VerifiedNode');
+    const { ProposalNode } = require('./ProposalNode');
+    const { QuestionsNode } = require('./QuestionsNode');
+    const { ResearchNode } = require('./ResearchNode');
+    const { PlanNode } = require('./PlanNode');
+    const { ImplementNode } = require('./ImplementNode');
+    const { ValidateNode } = require('./ValidateNode');
     const { ReleasedNode } = require('./ReleasedNode');
     
     switch (data.toStage) {
-      case 'Proposed': return new ProposedNode(data, client, config);
-      case 'Planned': return new PlannedNode(data, client, config);
-      case 'Executed': return new ExecutedNode(data, client, config);
-      case 'Verified': return new VerifiedNode(data, client, config);
+      case 'Proposal': return new ProposalNode(data, client, config);
+      case 'Questions': return new QuestionsNode(data, client, config);
+      case 'Research': return new ResearchNode(data, client, config);
+      case 'Plan': return new PlanNode(data, client, config);
+      case 'Implement': return new ImplementNode(data, client, config);
+      case 'Validate': return new ValidateNode(data, client, config);
       case 'Released': return new ReleasedNode(data, client, config);
       default: throw new Error(`Unknown TaskState: ${data.toStage}`);
     }
@@ -172,6 +176,34 @@ export abstract class Node implements NodeInterface {
     throw new Error(
       `Failed to generate content after ${maxRetries} attempts. Last error: ${lastError?.message}`
     );
+  }
+  
+  /**
+   * Protected helper - finds a specific ancestor node by stage
+   */
+  protected async getAncestorByStage(stage: TaskState): Promise<Node | null> {
+    let currentParentId = this.parentNodeId;
+    
+    while (currentParentId) {
+      const parentNode = await this.client.getNode(currentParentId);
+      if (parentNode.toStage === stage) {
+        return Node.create(parentNode, this.client, this.config);
+      }
+      currentParentId = parentNode.parentNodeId;
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Protected helper - reads content from ancestor node's artifact
+   */
+  protected async getAncestorContent(stage: TaskState): Promise<string> {
+    const ancestor = await this.getAncestorByStage(stage);
+    if (!ancestor) {
+      throw new Error(`Could not find ancestor node with stage: ${stage}`);
+    }
+    return ancestor.content;
   }
   
   /**

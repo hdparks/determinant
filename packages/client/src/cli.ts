@@ -124,24 +124,22 @@ async function cmdGet(client: DeterminantClient, args: CliArgs) {
 }
 
 async function cmdQueue(client: DeterminantClient, args: CliArgs) {
-  const state = (args.args[0] as TaskState) || 'Proposed';
   const limit = args.flags.limit ? parseInt(String(args.flags.limit), 10) : 10;
 
-  if (!TASK_STATES.includes(state)) {
-    console.error(`Invalid state. Valid: ${TASK_STATES.join(', ')}`);
-    process.exit(1);
-  }
-
-  const result = await client.getQueue(state, limit);
+  const result = await client.getQueue(limit);
 
   if (result.items.length === 0) {
-    console.log(`No tasks in ${state} queue`);
+    console.log('No nodes in queue');
     return;
   }
 
-  console.log(`\nQueue for ${state} (sorted by priority):\n`);
+  console.log(`\nPriority Queue (top ${result.items.length} nodes):\n`);
   for (const item of result.items) {
-    console.log(`  ${item.task.id.slice(-8)} | score:${item.score.toFixed(2)} | conf:${item.confidence ?? 'N/A'} | ${item.task.vibe}`);
+    const nodeIdShort = item.node.id.slice(-8);
+    const taskIdShort = item.task.id.slice(-8);
+    const conf = item.confidence ?? 'N/A';
+    const score = item.score.toFixed(2);
+    console.log(`  ${nodeIdShort} | task:${taskIdShort} | ${item.node.toStage.padEnd(10)} | score:${score} | conf:${conf} | ${item.task.vibe.slice(0, 50)}`);
   }
 }
 
@@ -203,7 +201,7 @@ Commands:
   add --vibe="..."          Create a new task with vibe (goal/user story)
   list [state]              List tasks (optionally by state)
   get <task-id>             Get task details with nodes
-  queue [state]             Show priority queue for state
+  queue                     Show priority queue of nodes
   set-state <id> <state>   Manually set task state
   heap-config [--set=...]   Show/update heap configuration
   help                    Show this help
@@ -222,7 +220,7 @@ Examples:
   det add "Quick task vibe" --priority=1
   det list Proposed
   det get 01ABC...
-  det queue Proposed
+  det queue --limit=20
   det set-state 01ABC... Executed
   det heap-config --set=priorityWeight=0.7,confidenceWeight=0.3
 

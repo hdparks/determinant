@@ -1,6 +1,6 @@
-export type TaskState = 'Proposed' | 'Planned' | 'Executed' | 'Verified' | 'Released';
+export type TaskState = 'Proposal' | 'Questions' | 'Research' | 'Plan' | 'Implement' | 'Validate' | 'Released';
 
-export const TASK_STATES: TaskState[] = ['Proposed', 'Planned', 'Executed', 'Verified', 'Released'];
+export const TASK_STATES: TaskState[] = ['Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released'];
 
 export interface Task {
   id: string;
@@ -31,8 +31,10 @@ export interface TaskWithNodes extends Task {
 }
 
 export interface QueueItem {
-  taskId: string;
+  node: Node;
+  task: Task;
   score: number;
+  confidence: number | null;
 }
 
 export interface HeapConfig {
@@ -45,13 +47,6 @@ export const DEFAULT_HEAP_CONFIG: HeapConfig = {
   priorityWeight: 0.5,
   confidenceWeight: 0.5,
   manualWeight: 0.0,
-};
-
-export interface AgentClaim {
-  id: string;
-  nodeId: string;
-  claimedAt: Date;
-  expiresAt: Date;
 }
 
 export interface CreateTaskRequest {
@@ -69,17 +64,6 @@ export interface UpdateTaskPriorityRequest {
   priority: number;
 }
 
-export interface ClaimTaskRequest {
-  taskId: string;
-  ttlMinutes?: number;
-}
-
 export interface TaskFilter {
   state?: TaskState;
-}
-
-export interface HeapPeekItem {
-  task: Task;
-  score: number;
-  confidence: number | null;
 }

@@ -8,7 +8,7 @@ export function createTask(vibe: string, pins: string[] = [], hints: string[] = 
 
   db.prepare(`
     INSERT INTO tasks (id, vibe, pins, hints, state, priority, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'Proposed', ?, ?, ?)
+    VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?)
   `).run(id, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, now, now);
 
   return {
@@ -16,7 +16,7 @@ export function createTask(vibe: string, pins: string[] = [], hints: string[] = 
     vibe,
     pins,
     hints,
-    state: 'Proposed',
+    state: 'Proposal',
     priority,
     manualWeight: 0,
     createdAt: new Date(now),

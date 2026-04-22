@@ -1,4 +1,4 @@
-import { Task, TaskState, Node, HeapConfig, HeapPeekItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, ClaimTaskRequest, AgentClaim } from '@determinant/types';
+import { Task, TaskState, Node, HeapConfig, QueueItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest } from '@determinant/types';
 
 const DEFAULT_BASE_URL = process.env.DETERMINANT_SERVER_URL ?? 'http://localhost:10110';
 
@@ -85,6 +85,16 @@ export class DeterminantClient {
   }
 
   /**
+   * Get a specific node by ID
+   */
+  async getNode(nodeId: string): Promise<Node> {
+    const response = await this.request<{ node: Node }>(`/api/nodes/${nodeId}`, {
+      method: 'GET',
+    });
+    return response.node;
+  }
+
+  /**
    * Update an existing node
    */
   async updateNode(nodeId: string, updates: Partial<Node>): Promise<Node> {
@@ -95,34 +105,8 @@ export class DeterminantClient {
     return response.node;
   }
 
-  async getQueue(state: TaskState, limit: number = 10): Promise<{ state: TaskState; items: HeapPeekItem[] }> {
-    return this.request(`/api/queue/${state}?limit=${limit}`);
-  }
-
-  async claimTask(req: ClaimTaskRequest): Promise<{ claim: AgentClaim }> {
-    return this.request('/api/claims', {
-      method: 'POST',
-      body: JSON.stringify(req),
-    });
-  }
-
-  async releaseClaim(id: string): Promise<void> {
-    return this.request(`/api/claims/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async renewClaim(id: string, ttlMinutes?: number): Promise<{ claim: AgentClaim }> {
-    return this.request(`/api/claims/${id}/renew`, {
-      method: 'POST',
-      body: JSON.stringify({ ttlMinutes }),
-    });
-  }
-
-  async cleanupClaims(): Promise<{ cleaned: number }> {
-    return this.request('/api/claims/cleanup', {
-      method: 'POST',
-    });
+  async getQueue(limit: number = 10): Promise<{ items: QueueItem[] }> {
+    return this.request(`/api/queue?limit=${limit}`);
   }
 
   async getHeapConfig(): Promise<{ config: HeapConfig }> {

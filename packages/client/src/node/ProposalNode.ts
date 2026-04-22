@@ -2,7 +2,7 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { writeFile } from 'fs/promises';
 
-export class ProposedNode extends Node {
+export class ProposalNode extends Node {
   async process(): Promise<ProcessResult> {
     await this.ensureArtifactDir();
     
@@ -42,7 +42,7 @@ export class ProposedNode extends Node {
       5   // default confidenceAfter
     );
     
-    // Create child node instance (will be PlannedNode)
+    // Create child node instance (will be QuestionsNode)
     const childNode = Node.create(childData, this.client, this.config);
     
     return {

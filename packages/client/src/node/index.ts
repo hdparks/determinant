@@ -1,9 +1,11 @@
 // Export all node classes
 export { Node } from './Node.js';
-export { ProposedNode } from './ProposedNode.js';
-export { PlannedNode } from './PlannedNode.js';
-export { ExecutedNode } from './ExecutedNode.js';
-export { VerifiedNode } from './VerifiedNode.js';
+export { ProposalNode } from './ProposalNode.js';
+export { QuestionsNode } from './QuestionsNode.js';
+export { ResearchNode } from './ResearchNode.js';
+export { PlanNode } from './PlanNode.js';
+export { ImplementNode } from './ImplementNode.js';
+export { ValidateNode } from './ValidateNode.js';
 export { ReleasedNode } from './ReleasedNode.js';
 
 // Export types

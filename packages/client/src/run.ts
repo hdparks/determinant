@@ -27,7 +27,7 @@ function parseArgs(args: string[]): CliArgs {
 
 async function cmdWork(client: DeterminantClient) {
   // TODO: agent should loop until time-to-live runs out
-  // TODO: agent should get the next unclaimed task from the heap
+  // TODO: agent should get the next node from the queue (via getQueue)
   // TODO: given an existing task, agent should be prompted with enough information to 1. perform the task at hand, and 2. return the necessary artifact
 }
 
@@ -39,7 +39,7 @@ determinant-run - Agent worker
 Usage: det run <command> [options]
 
 Commands:
-  work [state]              Start processing tasks from queue
+  work                    Start processing tasks from queue
   help                    Show this help
 
 `);

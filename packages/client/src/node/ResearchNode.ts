@@ -2,7 +2,7 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
 
-export class ExecutedNode extends Node {
+export class ResearchNode extends Node {
   async process(): Promise<ProcessResult> {
     await this.ensureArtifactDir();
     
@@ -10,24 +10,28 @@ export class ExecutedNode extends Node {
     const artifactPath = this.getArtifactPath(childId);
     
     const prompt = `
-You are verifying an execution to generate verification documentation.
+You are conducting research to answer questions about a development task.
 
-EXECUTION NOTES:
+QUESTIONS:
 ${this.content}
 
 YOUR JOB:
-1. Create verification/testing documentation at: ${artifactPath}
-2. The verification notes should include:
-   - Test results
-   - Quality checks performed
-   - Issues found and resolved
-   - Sign-off criteria met
+1. Create a research document at: ${artifactPath}
+2. For each question:
+   - Research the codebase thoroughly (use grep, read files, explore patterns)
+   - Apply best practices and solid engineering judgment
+   - Provide clear, actionable answers
+   
+3. The research document should be well-organized with:
+   - Each question followed by its answer
+   - Code examples or file references where relevant
+   - Recommendations based on findings
 
-3. Return ONLY this JSON (no other text):
+4. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
-  "confidenceBefore": <1-10>,
-  "confidenceAfter": <1-10>
+  "confidenceBefore": <1-10 how confident you were before research>,
+  "confidenceAfter": <1-10 how confident you are in the research findings>
 }
     `.trim();
     

@@ -8,11 +8,11 @@ import {
   updateTaskPriority,
   getTaskWithNodes,
   createNode,
+  getNode,
   updateNode,
 } from './task-store.js';
-import { claimNode, releaseClaim, renewClaim, getClaim, getClaimByNode, cleanupExpiredClaims } from './queue.js';
 import { getHeap } from './heap.js';
-import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, ClaimTaskRequest, HeapPeekItem } from '@determinant/types';
+import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest } from '@determinant/types';
 
 const router = Router();
 
@@ -178,6 +178,24 @@ router.post('/tasks/:taskId/nodes', (req: Request, res: Response) => {
   }
 });
 
+router.get('/nodes/:nodeId', (req: Request, res: Response) => {
+  const nodeId = req.params.nodeId as string;
+
+  try {
+    const node = getNode(nodeId);
+    
+    if (!node) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+
+    res.json({ node });
+  } catch (error) {
+    console.error('Error fetching node:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.patch('/nodes/:nodeId', (req: Request, res: Response) => {
   const nodeId = req.params.nodeId as string;
   const updates = req.body;
@@ -197,79 +215,18 @@ router.patch('/nodes/:nodeId', (req: Request, res: Response) => {
   }
 });
 
-router.get('/queue/:state', (req: Request, res: Response) => {
-  const state = req.params.state as string;
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+router.get('/queue', (req: Request, res: Response) => {
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
 
-  if (!TASK_STATES.includes(state as TaskState)) {
-    res.status(400).json({ error: `Invalid state. Valid: ${TASK_STATES.join(', ')}` });
+  if (limit !== undefined && (isNaN(limit) || limit < 1)) {
+    res.status(400).json({ error: 'Invalid limit parameter' });
     return;
   }
 
   const heap = getHeap();
-  const items = heap.peek(state as TaskState, limit);
+  const items = heap.getQueue(limit);
 
-  res.json({ state, items });
-});
-
-router.post('/claims', (req: Request, res: Response) => {
-  const body = req.body as ClaimTaskRequest;
-
-  if (!body.taskId) {
-    res.status(400).json({ error: 'taskId is required' });
-    return;
-  }
-
-  const task = getTask(body.taskId);
-  if (!task) {
-    res.status(404).json({ error: 'Task not found' });
-    return;
-  }
-
-  const existingClaim = getClaimByNode(task.id);
-  if (existingClaim) {
-    res.status(409).json({ error: 'Task already claimed', claim: existingClaim });
-    return;
-  }
-
-  const claim = claimNode(body.taskId, body.ttlMinutes ?? 30);
-  if (!claim) {
-    res.status(409).json({ error: 'Could not claim task' });
-    return;
-  }
-
-  res.status(201).json({ claim });
-});
-
-router.delete('/claims/:id', (req: Request, res: Response) => {
-  const id = req.params.id as string;
-
-  const released = releaseClaim(id);
-  if (!released) {
-    res.status(404).json({ error: 'Claim not found' });
-    return;
-  }
-
-  res.status(204).send();
-});
-
-router.post('/claims/:id/renew', (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  const ttlMinutes = req.body.ttlMinutes ?? 30;
-
-  const renewed = renewClaim(id, ttlMinutes);
-  if (!renewed) {
-    res.status(404).json({ error: 'Claim not found' });
-    return;
-  }
-
-  const claim = getClaim(id);
-  res.json({ claim });
-});
-
-router.post('/claims/cleanup', (_req: Request, res: Response) => {
-  const cleaned = cleanupExpiredClaims();
-  res.json({ cleaned });
+  res.json({ items });
 });
 
 router.get('/heap-config', (req: Request, res: Response) => {

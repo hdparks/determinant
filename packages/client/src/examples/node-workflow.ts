@@ -33,7 +33,7 @@ async function exampleWorkflow() {
     
     // Check if there are any nodes
     if (nodes.length === 0) {
-      console.log('No nodes yet. Create a Proposed node first.');
+      console.log('No nodes yet. Create a Proposal node first.');
       return;
     }
     

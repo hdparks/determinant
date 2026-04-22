@@ -10,6 +10,7 @@ export interface AgentResult {
   filePath: string;              // Path to generated markdown file
   confidenceBefore?: number;     // 1-10, optional (defaults to 5)
   confidenceAfter?: number;      // 1-10, optional (defaults to 5)
+  status?: 'success' | 'failure'; // Only used by ValidateNode
 }
 
 /**

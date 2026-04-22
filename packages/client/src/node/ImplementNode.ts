@@ -2,7 +2,7 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
 
-export class VerifiedNode extends Node {
+export class ImplementNode extends Node {
   async process(): Promise<ProcessResult> {
     await this.ensureArtifactDir();
     
@@ -10,24 +10,26 @@ export class VerifiedNode extends Node {
     const artifactPath = this.getArtifactPath(childId);
     
     const prompt = `
-You are preparing a release from verified work to generate release documentation.
+You are implementing a development plan.
 
-VERIFICATION NOTES:
+PLAN:
 ${this.content}
 
 YOUR JOB:
-1. Create release notes/documentation at: ${artifactPath}
-2. The release notes should include:
-   - Summary of changes
-   - Deployment steps
-   - Rollback procedures
-   - Known issues or limitations
+1. Execute each step in the plan
+2. Create detailed implementation notes at: ${artifactPath}
+3. The implementation notes should include:
+   - What was implemented
+   - Code changes made (specific files and changes)
+   - Any deviations from the plan and why
+   - Issues encountered and how they were resolved
+   - Current state of the implementation
 
-3. Return ONLY this JSON (no other text):
+4. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
-  "confidenceBefore": <1-10>,
-  "confidenceAfter": <1-10>
+  "confidenceBefore": <1-10 confidence before implementation>,
+  "confidenceAfter": <1-10 confidence in the implementation>
 }
     `.trim();
     

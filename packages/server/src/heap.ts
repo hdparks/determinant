@@ -1,5 +1,5 @@
 import { getDb } from './db.js';
-import { Task, TaskState, HeapConfig, DEFAULT_HEAP_CONFIG, QueueItem, HeapPeekItem } from '@determinant/types';
+import { Task, Node, TaskState, HeapConfig, DEFAULT_HEAP_CONFIG, QueueItem } from '@determinant/types';
 import { getLatestNode, getTask } from './task-store.js';
 
 export class PriorityHeap {
@@ -17,10 +17,11 @@ export class PriorityHeap {
     return { ...this.config };
   }
 
-  calculateScore(task: Task, confidence: number | null): number {
-    const priority = task.priority;
-    const confScore = confidence ?? 5;
-    const manual = task.manualWeight;
+  calculateScore(node: Node): number {
+    const task = getTask(node.taskId)
+    const priority = task?.priority ?? 0;
+    const confScore = node.confidenceBefore ?? 5;
+    const manual = task?.manualWeight ?? 0;
 
     const score =
       this.config.priorityWeight * (6 - priority) +
@@ -30,78 +31,81 @@ export class PriorityHeap {
     return score;
   }
 
-  getQueueForState(state: TaskState, limit: number = 10): QueueItem[] {
+  getQueue(limit?: number): QueueItem[] {
     const db = getDb();
+    
+    // Fetch all nodes with their parent tasks
     const rows = db.prepare(`
-      SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
-      FROM tasks WHERE state = ?
-      ORDER BY created_at DESC
-    `).all(state) as any[];
+      SELECT 
+        n.id as nodeId,
+        n.task_id as taskId,
+        n.parent_node_id as parentNodeId,
+        n.from_stage as fromStage,
+        n.to_stage as toStage,
+        n.content,
+        n.confidence_before as confidenceBefore,
+        n.confidence_after as confidenceAfter,
+        n.created_at as nodeCreatedAt,
+        t.id as taskIdFull,
+        t.vibe,
+        t.pins,
+        t.hints,
+        t.state,
+        t.priority,
+        t.manual_weight as manualWeight,
+        t.created_at as taskCreatedAt,
+        t.updated_at as taskUpdatedAt
+      FROM nodes n
+      INNER JOIN tasks t ON n.task_id = t.id
+      WHERE t.state != 'Released'
+      ORDER BY n.created_at DESC
+    `).all() as any[];
 
-    const queue: QueueItem[] = rows
-      .map(row => {
-        const task: Task = {
-          ...row,
-          pins: JSON.parse(row.pins),
-          hints: JSON.parse(row.hints),
-          state: row.state as TaskState,
-          priority: row.priority,
-          manualWeight: row.manualWeight,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-        };
+    // Map rows to QueueItems with scores
+    const items: QueueItem[] = rows.map(row => {
+      const node: Node = {
+        id: row.nodeId,
+        taskId: row.taskId,
+        parentNodeId: row.parentNodeId,
+        fromStage: row.fromStage as TaskState | null,
+        toStage: row.toStage as TaskState,
+        content: row.content,
+        confidenceBefore: row.confidenceBefore,
+        confidenceAfter: row.confidenceAfter,
+        createdAt: new Date(row.nodeCreatedAt),
+      };
 
-        const node = getLatestNode(task.id);
-        const confidence = node?.confidenceAfter ?? 5;
+      const task: Task = {
+        id: row.taskIdFull,
+        vibe: row.vibe,
+        pins: JSON.parse(row.pins),
+        hints: JSON.parse(row.hints),
+        state: row.state as TaskState,
+        priority: row.priority,
+        manualWeight: row.manualWeight,
+        createdAt: new Date(row.taskCreatedAt),
+        updatedAt: new Date(row.taskUpdatedAt),
+      };
 
-        return {
-          taskId: task.id,
-          score: this.calculateScore(task, confidence),
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      const score = this.calculateScore(node);
 
-    return queue;
-  }
+      return {
+        node,
+        task,
+        score,
+        confidence: node.confidenceBefore,
+      };
+    });
 
-  getNextTask(state: TaskState): string | null {
-    const queue = this.getQueueForState(state, 1);
-    return queue.length > 0 ? queue[0].taskId : null;
-  }
+    // Sort by score descending (higher score = higher priority)
+    items.sort((a, b) => b.score - a.score);
 
-  peek(state: TaskState, limit: number = 10): HeapPeekItem[] {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
-      FROM tasks WHERE state = ?
-      ORDER BY created_at DESC
-    `).all(state) as any[];
+    // Apply limit if specified
+    if (limit !== undefined && limit > 0) {
+      return items.slice(0, limit);
+    }
 
-    return rows
-      .map(row => {
-        const task: Task = {
-          ...row,
-          pins: JSON.parse(row.pins),
-          hints: JSON.parse(row.hints),
-          state: row.state as TaskState,
-          priority: row.priority,
-          manualWeight: row.manualWeight,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-        };
-
-        const node = getLatestNode(task.id);
-        const confidence = node?.confidenceAfter ?? null;
-
-        return {
-          task,
-          score: this.calculateScore(task, confidence),
-          confidence,
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+    return items;
   }
 }
 
