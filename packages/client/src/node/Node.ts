@@ -1,12 +1,9 @@
 import { Node as NodeInterface, TaskState, TASK_STATES } from '@determinant/types';
 import type { DeterminantClient } from '../client/index.js';
 import type { ProcessResult, AgentResult, OpenCodeConfig } from './types.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { readFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-
-const execAsync = promisify(exec);
 
 export abstract class Node implements NodeInterface {
   // Properties from NodeInterface
@@ -141,74 +138,156 @@ export abstract class Node implements NodeInterface {
     
     for (let attempt = 1; attempt <= maxRetries!; attempt++) {
       try {
-        // Build OpenCode command
-        const modelFlag = model ? `--model ${model}` : '';
-        const variantFlag = variant ? `--variant ${variant}` : '';
-        const thinkingFlag = variant ? '--thinking' : '';
-        // Escape the prompt for shell
-        const escapedPrompt = prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
-        const command = `opencode run --format json --dangerously-skip-permissions ${modelFlag} ${variantFlag} ${thinkingFlag} "${escapedPrompt}"`.trim();
+        // Build OpenCode command args
+        const args: string[] = [
+          'run',
+          '--format', 'json',
+          '--dangerously-skip-permissions'
+        ];
+        
+        if (model) args.push('--model', model);
+        if (variant) {
+          args.push('--variant', variant);
+          args.push('--thinking');
+        }
+        args.push(prompt);
         
         if (verbose && attempt > 1) {
           console.log(`   ⚠️  Retry attempt ${attempt}/${maxRetries}...`);
         }
         
-        // Execute OpenCode
+        // Execute OpenCode with real-time streaming
         if (verbose) {
           console.log(`   ⏳ Executing OpenCode (timeout: ${timeout! / 1000}s)...`);
+        } else {
+          // Show spinner in non-verbose mode
+          process.stdout.write('   ⏳ Processing');
         }
         
-        const { stdout, stderr } = await execAsync(command, {
+        const child = spawn('opencode', args, { 
           cwd: workingDir,
-          timeout,
-          maxBuffer: 10 * 1024 * 1024 // 10MB
+          stdio: ['ignore', 'pipe', 'pipe'] // stdin: ignore, stdout: pipe, stderr: pipe
         });
         
-        // Parse JSON events from stdout
-        const lines = stdout.split('\n').filter(line => line.trim());
         const textParts: string[] = [];
+        let stdoutBuffer = '';
+        let stderrBuffer = '';
+        let spinnerInterval: NodeJS.Timeout | null = null;
         
-        for (const line of lines) {
-          try {
-            const event = JSON.parse(line);
+        // Spinner for non-verbose mode
+        if (!verbose) {
+          let dots = 0;
+          spinnerInterval = setInterval(() => {
+            dots = (dots + 1) % 4;
+            process.stdout.write(`\r   ⏳ Processing${'.'.repeat(dots)}   `);
+          }, 500);
+        }
+        
+        // Process stdout line by line in real-time
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdoutBuffer += chunk.toString();
+          const lines = stdoutBuffer.split('\n');
+          
+          // Keep last incomplete line in buffer
+          stdoutBuffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (!line.trim()) continue;
             
-            // Display reasoning content in real-time (when verbose and thinking enabled)
-            if (event.type === 'reasoning' && event.part?.text) {
-              if (verbose) {
-                console.log(`\n   💭 Thinking...`);
-                const reasoningLines = event.part.text.split('\n');
-                reasoningLines.forEach((line: string) => {
-                  console.log(`      ${line}`);
-                });
-                
-                // Show timing if available
-                if (event.part.time) {
-                  const duration = ((event.part.time.end - event.part.time.start) / 1000).toFixed(2);
-                  console.log(`   ⏱️  Thinking took ${duration}s\n`);
+            try {
+              const event = JSON.parse(line);
+              
+              // Display reasoning in real-time
+              if (event.type === 'reasoning' && event.part?.text) {
+                if (verbose) {
+                  console.log(`\n   💭 Thinking...`);
+                  event.part.text.split('\n').forEach((line: string) => {
+                    console.log(`      ${line}`);
+                  });
+                  
+                  if (event.part.time) {
+                    const duration = ((event.part.time.end - event.part.time.start) / 1000).toFixed(2);
+                    console.log(`   ⏱️  Thinking took ${duration}s\n`);
+                  }
                 }
               }
+              
+              // Display text in real-time
+              if (event.type === 'text' && event.part?.text) {
+                if (verbose) {
+                  console.log(`\n   📝 Response...`);
+                  event.part.text.split('\n').forEach((line: string) => {
+                    console.log(`      ${line}`);
+                  });
+                }
+                textParts.push(event.part.text);
+              }
+            } catch (e) {
+              // Skip non-JSON lines
+            }
+          }
+        });
+        
+        // Display stderr in real-time
+        child.stderr.on('data', (chunk: Buffer) => {
+          const text = chunk.toString();
+          stderrBuffer += text;
+          if (verbose) {
+            process.stderr.write(text);
+          }
+        });
+        
+        // Wait for process to complete
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            child.kill();
+            if (spinnerInterval) clearInterval(spinnerInterval);
+            reject(new Error(`OpenCode timed out after ${timeout! / 1000}s`));
+          }, timeout);
+
+          child.on('close', (code) => {
+            clearTimeout(timer);
+            if (spinnerInterval) {
+              clearInterval(spinnerInterval);
+              if (!verbose) process.stdout.write('\r'); // Clear spinner line
             }
             
-            // Display text content in real-time (when verbose)
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(`OpenCode exited with code ${code}${stderrBuffer ? `\nStderr: ${stderrBuffer}` : ''}`));
+            }
+          });
+
+          child.on('error', (err) => {
+            clearTimeout(timer);
+            if (spinnerInterval) clearInterval(spinnerInterval);
+            reject(err);
+          });
+        });
+        
+        // Process any remaining buffer
+        if (stdoutBuffer.trim()) {
+          try {
+            const event = JSON.parse(stdoutBuffer);
             if (event.type === 'text' && event.part?.text) {
-              if (verbose) {
-                console.log(`\n   📝 Response...`);
-                const textLines = event.part.text.split('\n');
-                textLines.forEach((line: string) => {
-                  console.log(`      ${line}`);
-                });
-              }
-              // Still collect text parts for parsing AgentResult
               textParts.push(event.part.text);
             }
           } catch (e) {
-            // Skip non-JSON lines
+            // Ignore
           }
         }
         
         // Combine text parts and parse as AgentResult
         const resultText = textParts.join('');
-        const result = JSON.parse(resultText) as AgentResult;
+        
+        // Extract JSON from markdown code fence
+        const jsonMatch = resultText.match(/```json\s*\n([\s\S]*?)\n```/);
+        if (!jsonMatch) {
+          throw new Error('No JSON code block found in OpenCode response');
+        }
+        
+        const result = JSON.parse(jsonMatch[1]) as AgentResult;
         
         // Validate required fields
         if (!result.filePath) {
