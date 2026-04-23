@@ -11,8 +11,7 @@ export class ProposalNode extends Node {
     
     await this.ensureArtifactDir();
     
-    const childId = this.generateId();
-    const artifactPath = this.getArtifactPath(childId);
+    const artifactPath = this.getStageArtifactPath();
     
     // Fetch the task data to get vibe, pins, hints
     const taskData = await this.client.getTask(this.taskId);

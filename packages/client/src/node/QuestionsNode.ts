@@ -11,8 +11,7 @@ export class QuestionsNode extends Node {
     
     await this.ensureArtifactDir();
     
-    const childId = this.generateId();
-    const artifactPath = this.getArtifactPath(childId);
+    const artifactPath = this.getStageArtifactPath();
     
     const prompt = `
 You are analyzing a proposal to identify knowledge gaps that need research.
@@ -21,7 +20,10 @@ PROPOSAL:
 ${this.content}
 
 YOUR JOB:
-1. Create a questions document at: ${artifactPath}
+1. Check if a file already exists at: ${artifactPath}
+   - IF IT EXISTS: Review the existing questions and continue/complete them
+   - IF IT DOESN'T EXIST: Create a new questions document from scratch
+
 2. The questions should cover:
    - What parts of the codebase are relevant?
    - What existing patterns or conventions should be followed?
@@ -40,6 +42,14 @@ YOUR JOB:
     `.trim();
     
     const result = await this.generateContent(prompt);
+    
+    // Validate agent wrote to expected location
+    if (result.filePath !== artifactPath) {
+      throw new Error(
+        `Agent wrote to unexpected path: ${result.filePath}, expected: ${artifactPath}`
+      );
+    }
+    
     const markdown = await readFile(result.filePath, 'utf-8');
     const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);

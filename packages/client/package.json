@@ -10,7 +10,10 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "cli": "tsx src/cli.ts",
-    "run": "tsx src/run.ts"
+    "run": "tsx src/run.ts",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage"
   },
   "keywords": ["determinant", "client", "cli"],
   "license": "MIT",
@@ -18,7 +21,10 @@
     "@determinant/types": "file:../types"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.11",
     "@types/node": "^22.13.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

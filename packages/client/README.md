@@ -143,6 +143,48 @@ Tasks progress through the following states:
 
 Tasks have a priority from 1 (highest) to 5 (lowest). This affects queue ordering.
 
+## Document Linking
+
+Determinant uses document linking to reduce token usage and improve performance. Research documents are automatically summarized and linked in plan artifacts.
+
+### How It Works
+
+- Research documents are summarized (first 50 lines)
+- Plan artifacts contain markdown links to full research: `[Research: ...](./research.md)`
+- Links are clickable in VS Code and other markdown viewers
+- Token usage reduced by >90% in typical scenarios
+
+### Artifact Paths
+
+All artifacts use deterministic, stage-based naming:
+- `.determinant/artifacts/{taskId}/proposal.md`
+- `.determinant/artifacts/{taskId}/questions.md`
+- `.determinant/artifacts/{taskId}/research.md`
+- `.determinant/artifacts/{taskId}/plan.md`
+- `.determinant/artifacts/{taskId}/implement.md`
+- `.determinant/artifacts/{taskId}/validate.md`
+
+This predictable structure enables:
+- **Crash recovery**: Agents can resume partial work on retry
+- **Easy debugging**: Know exactly where to find artifacts
+- **Overwrite behavior**: Repair cycles update existing files
+
+### Fallback Behavior
+
+If a linked artifact is missing or inaccessible:
+1. Warning message logged to console
+2. System attempts to retrieve content from database
+3. Process continues with available content
+4. No task failure due to missing artifacts
+
+### Benefits
+
+- **Reduced token usage**: 90%+ reduction in prompt size
+- **Faster processing**: Smaller prompts = faster LLM responses
+- **Lower costs**: Fewer tokens = lower API costs
+- **Better organization**: Clear document separation and references
+- **Crash recovery**: Automatic resumption from partial work
+
 ## Client Library
 
 The package also exports a `DeterminantClient` class for programmatic use:

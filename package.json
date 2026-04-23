@@ -11,7 +11,10 @@
     "dev:server": "npm run dev -w packages/server",
     "dev:cli": "npm run dev -w packages/client",
     "cli": "npm run cli -w packages/client",
-    "run": "npm run run -w packages/client"
+    "run": "npm run run -w packages/client",
+    "test": "npm run test -w packages/client",
+    "test:watch": "npm run test:watch -w packages/client",
+    "test:coverage": "npm run test:coverage -w packages/client"
   },
   "keywords": ["agentic", "workflow", "pipeline", "task-queue"],
   "license": "MIT"

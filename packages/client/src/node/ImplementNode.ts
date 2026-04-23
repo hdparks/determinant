@@ -11,8 +11,7 @@ export class ImplementNode extends Node {
     
     await this.ensureArtifactDir();
     
-    const childId = this.generateId();
-    const artifactPath = this.getArtifactPath(childId);
+    const artifactPath = this.getStageArtifactPath();
     
     const prompt = `
 You are implementing a development plan.
@@ -21,16 +20,20 @@ PLAN:
 ${this.content}
 
 YOUR JOB:
-1. Execute each step in the plan
-2. Create detailed implementation notes at: ${artifactPath}
-3. The implementation notes should include:
+1. Check if a file already exists at: ${artifactPath}
+   - IF IT EXISTS: Review the existing implementation notes and continue/complete the implementation
+   - IF IT DOESN'T EXIST: Start implementing from scratch
+
+2. Execute each step in the plan
+3. Create detailed implementation notes at: ${artifactPath}
+4. The implementation notes should include:
    - What was implemented
    - Code changes made (specific files and changes)
    - Any deviations from the plan and why
    - Issues encountered and how they were resolved
    - Current state of the implementation
 
-4. Return ONLY this JSON (no other text):
+5. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 confidence before implementation>,
@@ -39,6 +42,14 @@ YOUR JOB:
     `.trim();
     
     const result = await this.generateContent(prompt);
+    
+    // Validate agent wrote to expected location
+    if (result.filePath !== artifactPath) {
+      throw new Error(
+        `Agent wrote to unexpected path: ${result.filePath}, expected: ${artifactPath}`
+      );
+    }
+    
     const markdown = await readFile(result.filePath, 'utf-8');
     const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);

@@ -2,7 +2,7 @@ import { Node as NodeInterface, TaskState, TASK_STATES } from '@determinant/type
 import type { DeterminantClient } from '../client/index.js';
 import type { ProcessResult, AgentResult, OpenCodeConfig } from './types.js';
 import { spawn } from 'child_process';
-import { readFile, mkdir } from 'fs/promises';
+import { readFile, mkdir, access, constants } from 'fs/promises';
 import { join } from 'path';
 
 export abstract class Node implements NodeInterface {
@@ -414,10 +414,178 @@ export abstract class Node implements NodeInterface {
   }
   
   /**
-   * Protected helper - gets artifact file path for a node
+   * Protected helper - gets artifact file path for a child node
+   * 
+   * This method is deterministic and idempotent:
+   * - Same nodeId always returns the same path (for this node instance)
+   * - Path uniqueness is guaranteed by unique node IDs
+   * - Path format: {workingDir}/.determinant/artifacts/{taskId}/{nodeId}.md
+   * 
+   * Usage Pattern:
+   * - Parent nodes call this to get artifact path for children they will create
+   * - Child ID is generated via generateId() before calling this method
+   * - Agent writes artifact to this path during processing
+   * - Child node is created with artifact content after agent completes
+   * 
+   * @param nodeId - Unique identifier for the child node (from generateId())
+   * @returns Absolute path to artifact file (always .md extension)
+   * @throws Error if workingDir or taskId not configured, or nodeId is empty
+   * 
+   * @example
+   * ```typescript
+   * const childId = this.generateId();
+   * const artifactPath = this.getArtifactPath(childId);
+   * // artifactPath: /path/to/project/.determinant/artifacts/task123/node_1234567890_abc123def.md
+   * ```
    */
   protected getArtifactPath(nodeId: string): string {
-    return join(this.config.workingDir!, '.determinant', 'artifacts', this.taskId, `${nodeId}.md`);
+    if (!this.config.workingDir) {
+      throw new Error('workingDir is not configured');
+    }
+    if (!this.taskId) {
+      throw new Error('taskId is not set');
+    }
+    if (!nodeId || nodeId.trim() === '') {
+      throw new Error('nodeId cannot be empty');
+    }
+    return join(this.config.workingDir, '.determinant', 'artifacts', this.taskId, `${nodeId}.md`);
+  }
+  
+  /**
+   * Get deterministic artifact path based on stage type.
+   * 
+   * This method provides a predictable, stage-based path that enables:
+   * - Crash recovery: Agents can resume partial work on retry
+   * - Overwrite behavior: Repair cycles overwrite previous attempts
+   * - Debugging: Predictable paths like "research.md", "plan.md"
+   * 
+   * Format: {workingDir}/.determinant/artifacts/{taskId}/{stage}.md
+   * 
+   * Examples:
+   * - Research node → .determinant/artifacts/task123/research.md
+   * - Plan node → .determinant/artifacts/task123/plan.md (overwrites on repair)
+   * 
+   * @returns Absolute path to stage-specific artifact file
+   * @throws Error if workingDir or taskId not configured
+   */
+  protected getStageArtifactPath(): string {
+    if (!this.config.workingDir) {
+      throw new Error('workingDir is not configured');
+    }
+    if (!this.taskId) {
+      throw new Error('taskId is not set');
+    }
+    
+    const stageName = this.toStage.toLowerCase();
+    return join(
+      this.config.workingDir,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      `${stageName}.md`
+    );
+  }
+  
+  /**
+   * Get relative path to an artifact from the current task's artifact directory
+   */
+  protected getRelativeArtifactPath(nodeId: string): string {
+    return `./${nodeId}.md`;
+  }
+
+  /**
+   * Check if an artifact file exists on disk
+   */
+  protected async artifactExists(nodeId: string): Promise<boolean> {
+    try {
+      const artifactPath = this.getArtifactPath(nodeId);
+      await access(artifactPath, constants.R_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Extract first N lines from content as a summary
+   */
+  protected extractSummary(content: string, maxLines: number = 50): string {
+    const lines = content.split('\n');
+    if (lines.length <= maxLines) {
+      return content;
+    }
+    return lines.slice(0, maxLines).join('\n') + '\n\n*[Summary truncated - see full document for complete details]*';
+  }
+
+  /**
+   * Get descriptive link text for a node based on its stage and content
+   */
+  protected getLinkText(node: Node): string {
+    const stage = node.toStage;
+    
+    // Try to extract title from first markdown heading
+    const lines = node.content.split('\n');
+    const titleLine = lines.find(line => line.startsWith('# '));
+    
+    if (titleLine) {
+      const title = titleLine.replace(/^#\s+/, '').trim();
+      return `${stage}: ${title}`;
+    }
+    
+    return `${stage} Document`;
+  }
+
+  /**
+   * Create a markdown link to an artifact with optional metadata
+   */
+  protected async createArtifactLink(targetNode: Node, includeMetadata: boolean = true): Promise<string> {
+    const relativePath = this.getRelativeArtifactPath(targetNode.id);
+    const linkText = this.getLinkText(targetNode);
+    const exists = await this.artifactExists(targetNode.id);
+    
+    if (!exists) {
+      console.warn(`⚠️  Artifact not found for node ${targetNode.id}, link may be broken`);
+    }
+    
+    let result = `[${linkText}](${relativePath})`;
+    
+    if (includeMetadata) {
+      const confidence = targetNode.confidenceAfter !== null 
+        ? `${targetNode.confidenceBefore} → ${targetNode.confidenceAfter}`
+        : 'N/A';
+      
+      result = `**Path**: ${result}  
+**Stage**: ${targetNode.toStage}  
+**Confidence**: ${confidence}`;
+    }
+    
+    return result;
+  }
+
+  /**
+   * Read artifact from disk with fallback to database content
+   */
+  protected async readArtifactWithFallback(nodeId: string): Promise<string> {
+    const artifactPath = this.getArtifactPath(nodeId);
+    
+    try {
+      return await readFile(artifactPath, 'utf-8');
+    } catch (error: any) {
+      console.warn(`⚠️  Artifact file not accessible for ${nodeId} (${error.code}), attempting database fallback`);
+      
+      // Try to get from database
+      try {
+        const node = await this.client.getNode(nodeId);
+        if (node.content) {
+          console.warn(`✓ Using database content for ${nodeId}`);
+          return node.content;
+        }
+      } catch (dbError) {
+        console.error(`❌ Database fallback failed for ${nodeId}`);
+      }
+      
+      throw new Error(`Artifact and database content both unavailable for node ${nodeId}`);
+    }
   }
   
   /**

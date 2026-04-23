@@ -12,8 +12,7 @@ export class ValidateNode extends Node {
     
     await this.ensureArtifactDir();
     
-    const childId = this.generateId();
-    const artifactPath = this.getArtifactPath(childId);
+    const artifactPath = this.getStageArtifactPath();
     
     // Get proposal and plan content from ancestors
     const proposalContent = await this.getAncestorContent('Proposal');
@@ -32,11 +31,15 @@ IMPLEMENTATION NOTES:
 ${this.content}
 
 YOUR JOB:
-1. Run each verification test outlined in the plan
-2. Compare the implementation against the original proposal requirements
-3. Create a validation report at: ${artifactPath}
+1. Check if a file already exists at: ${artifactPath}
+   - IF IT EXISTS: Review the existing validation report and update/complete it
+   - IF IT DOESN'T EXIST: Create a new validation report from scratch
 
-4. The validation report MUST:
+2. Run each verification test outlined in the plan
+3. Compare the implementation against the original proposal requirements
+4. Create a validation report at: ${artifactPath}
+
+5. The validation report MUST:
    - Start with a clear SUCCESS or FAILURE status
    - List each verification test and its result
    - Verify that all proposal requirements are met
@@ -44,7 +47,7 @@ YOUR JOB:
    - If FAILURE: clearly identify what failed and why
    - If SUCCESS: confirm all requirements satisfied
 
-5. Return ONLY this JSON (no other text):
+6. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "status": "success" OR "failure",
@@ -54,6 +57,14 @@ YOUR JOB:
     `.trim();
     
     const result = await this.generateContent(prompt);
+    
+    // Validate agent wrote to expected location
+    if (result.filePath !== artifactPath) {
+      throw new Error(
+        `Agent wrote to unexpected path: ${result.filePath}, expected: ${artifactPath}`
+      );
+    }
+    
     const markdown = await readFile(result.filePath, 'utf-8');
     
     if (this.config.verbose) {
