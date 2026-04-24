@@ -68,7 +68,8 @@ router.post('/tasks', (req: Request, res: Response) => {
   const priority = body.priority ?? 3;
   const pins = body.pins ?? [];
   const hints = body.hints ?? [];
-  const task = createTask(body.vibe, pins, hints, priority);
+  const workingDir = body.workingDir ?? null;
+  const task = createTask(body.vibe, pins, hints, priority, workingDir);
 
   res.status(201).json({ task });
 });

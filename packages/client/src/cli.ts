@@ -25,7 +25,9 @@ function parseArgs(args: string[]): CliArgs {
         (flags[key] as string[]).push(value);
         return false;
       }
-      flags[key] = value ?? true;
+      // Convert kebab-case to camelCase for working-dir
+      const flagKey = key === 'working-dir' ? 'workingDir' : key;
+      flags[flagKey] = value ?? true;
       return false;
     }
     return true;
@@ -52,6 +54,7 @@ async function cmdList(client: DeterminantClient, args: CliArgs) {
 async function cmdAdd(client: DeterminantClient, args: CliArgs) {
   const vibe = args.flags.vibe ? String(args.flags.vibe) : args.args.join(' ');
   const priority = args.flags.priority ? parseInt(String(args.flags.priority), 10) : 3;
+  const workingDir = args.flags.workingDir ? String(args.flags.workingDir) : undefined;
   const pinsRaw = args.flags.pin;
   const hintsRaw = args.flags.hint;
   
@@ -62,18 +65,32 @@ async function cmdAdd(client: DeterminantClient, args: CliArgs) {
 
   if (!vibe) {
     console.error('Error: Vibe required');
-    console.error('Usage: det add --vibe="..." [--pin="..." --hint="..." --priority=1-5]');
-    console.error('   or: det add "<vibe>" [--pin="..." --hint="..." --priority=1-5]');
+    console.error('Usage: det add --vibe="..." [--pin="..." --hint="..." --priority=1-5 --working-dir="/path"]');
+    console.error('   or: det add "<vibe>" [--pin="..." --hint="..." --priority=1-5 --working-dir="/path"]');
     process.exit(1);
   }
 
-  const result = await client.createTask({ vibe, pins, hints, priority });
+  // Validate working directory exists (non-blocking warning)
+  if (workingDir) {
+    const { access, constants } = await import('fs/promises');
+    try {
+      await access(workingDir, constants.R_OK);
+    } catch {
+      console.warn(`⚠️  Warning: Working directory does not exist or is not readable: ${workingDir}`);
+      console.warn(`   Task will be created but may fail during execution.`);
+    }
+  }
+
+  const result = await client.createTask({ vibe, pins, hints, priority, workingDir });
   const task = result.task;
 
   console.log(`Created task: ${task.id}`);
   console.log(`  Vibe: ${task.vibe}`);
   console.log(`  Priority: ${task.priority}`);
   console.log(`  State: ${task.state}`);
+  if (task.workingDir) {
+    console.log(`  Working Dir: ${task.workingDir}`);
+  }
   if (task.pins.length > 0) {
     console.log(`  Pins:`);
     task.pins.forEach(pin => console.log(`    - ${pin}`));
@@ -100,6 +117,9 @@ async function cmdGet(client: DeterminantClient, args: CliArgs) {
   console.log(`ID: ${full.task.id}`);
   console.log(`State: ${full.task.state}`);
   console.log(`Priority: ${full.task.priority}`);
+  if (full.task.workingDir) {
+    console.log(`Working Dir: ${full.task.workingDir}`);
+  }
   console.log(`Created: ${full.task.createdAt}`);
   console.log(`Updated: ${full.task.updatedAt}`);
   
@@ -211,6 +231,7 @@ Options:
   --pin="..."              Acceptance criteria (can be repeated)
   --hint="..."             Additional context (can be repeated)
   --priority=1-5           Set task priority (1 highest, 5 lowest)
+  --working-dir="/path"    Working directory for task execution
   --state=<state>           Filter by state
   --limit=N                 Limit results
   --set=key=value,...       Set heap config values
@@ -218,6 +239,7 @@ Options:
 Examples:
   det add --vibe="Implement login flow" --pin="Use JWT" --pin="Support OAuth" --hint="Check auth.ts"
   det add "Quick task vibe" --priority=1
+  det add --vibe="Fix auth bug" --working-dir="./packages/server"
   det list Proposal
   det get 01ABC...
   det queue --limit=20

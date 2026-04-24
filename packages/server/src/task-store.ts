@@ -1,16 +1,16 @@
 import { getDb, newId } from './db.js';
 import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 
-export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3): Task {
+export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3, workingDir: string | null = null): Task {
   const db = getDb();
   const taskId = newId();
   const now = new Date().toISOString();
 
   // Insert task
   db.prepare(`
-    INSERT INTO tasks (id, vibe, pins, hints, state, priority, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?)
-  `).run(taskId, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, now, now);
+    INSERT INTO tasks (id, vibe, pins, hints, state, priority, working_dir, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?, ?)
+  `).run(taskId, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, workingDir, now, now);
 
   // Auto-create initial Proposal node
   const proposalNodeId = newId();
@@ -31,6 +31,7 @@ export function createTask(vibe: string, pins: string[] = [], hints: string[] = 
     state: 'Proposal',
     priority,
     manualWeight: 0,
+    workingDir,
     createdAt: new Date(now),
     updatedAt: new Date(now),
   };
@@ -39,7 +40,8 @@ export function createTask(vibe: string, pins: string[] = [], hints: string[] = 
 export function getTask(id: string): Task | null {
   const db = getDb();
   const row = db.prepare(`
-    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, 
+           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE id = ?
   `).get(id) as any;
 
@@ -58,7 +60,8 @@ export function getTask(id: string): Task | null {
 export function getTasksByState(state: TaskState): Task[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight,
+           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE state = ?
     ORDER BY created_at DESC
   `).all(state) as any[];
@@ -76,7 +79,8 @@ export function getTasksByState(state: TaskState): Task[] {
 export function getAllTasks(): Task[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, created_at as createdAt, updated_at as updatedAt
+    SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight,
+           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
     FROM tasks ORDER BY created_at DESC
   `).all() as any[];
 

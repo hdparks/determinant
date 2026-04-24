@@ -10,6 +10,7 @@ export interface Task {
   state: TaskState;
   priority: number;
   manualWeight: number;
+  workingDir: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +56,7 @@ export interface CreateTaskRequest {
   pins?: string[];
   hints?: string[];
   priority?: number;
+  workingDir?: string;
 }
 
 export interface UpdateTaskStateRequest {

@@ -18,6 +18,7 @@ export function initDb(path: string = './determinant.db'): Database.Database {
       state TEXT NOT NULL CHECK(state IN ('Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released')),
       priority INTEGER DEFAULT 3 CHECK(priority >= 1 AND priority <= 5),
       manual_weight INTEGER DEFAULT 0,
+      working_dir TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -40,6 +41,17 @@ export function initDb(path: string = './determinant.db'): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_nodes_processed_at ON nodes(processed_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
   `);
+
+  // Migration: Add working_dir column if it doesn't exist (for existing databases)
+  const hasWorkingDir = db.prepare(`
+    SELECT COUNT(*) as count 
+    FROM pragma_table_info('tasks') 
+    WHERE name = 'working_dir'
+  `).get() as { count: number };
+
+  if (hasWorkingDir.count === 0) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN working_dir TEXT`);
+  }
 
   return db;
 }

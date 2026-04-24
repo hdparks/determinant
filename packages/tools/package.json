@@ -1,0 +1,11 @@
+{
+  "name": "@determinant/tools",
+  "version": "1.0.0",
+  "description": "Utility scripts for managing and recovering Determinant tasks",
+  "type": "module",
+  "scripts": {
+    "restore": "node restore-task.mjs"
+  },
+  "keywords": ["determinant", "tools", "recovery"],
+  "license": "MIT"
+}

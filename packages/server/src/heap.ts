@@ -54,6 +54,7 @@ export class PriorityHeap {
         t.state,
         t.priority,
         t.manual_weight as manualWeight,
+        t.working_dir as workingDir,
         t.created_at as taskCreatedAt,
         t.updated_at as taskUpdatedAt
       FROM nodes n
@@ -86,6 +87,7 @@ export class PriorityHeap {
         state: row.state as TaskState,
         priority: row.priority,
         manualWeight: row.manualWeight,
+        workingDir: row.workingDir,
         createdAt: new Date(row.taskCreatedAt),
         updatedAt: new Date(row.taskUpdatedAt),
       };

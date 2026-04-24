@@ -2,6 +2,7 @@
 
 import { DeterminantClient } from './client/index.js';
 import { Node } from './node/Node.js';
+import { resolve } from 'path';
 
 interface CliArgs {
   command: string;
@@ -26,6 +27,26 @@ function parseArgs(args: string[]): CliArgs {
   return { command, args: filtered, flags };
 }
 
+/**
+ * Resolves the working directory for task execution
+ * - If workingDir is absolute, uses it as-is
+ * - If workingDir is relative, resolves against process.cwd()
+ * - If workingDir is null/undefined, uses process.cwd()
+ */
+function resolveWorkingDir(workingDir: string | null | undefined): string {
+  if (!workingDir) {
+    return process.cwd();
+  }
+  
+  // Check if path is absolute
+  if (workingDir.startsWith('/')) {
+    return workingDir;
+  }
+  
+  // Resolve relative path against current working directory
+  return resolve(process.cwd(), workingDir);
+}
+
 async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
   const startTime = Date.now();
   const ttl = ttlSeconds * 1000; // Convert to milliseconds
@@ -46,8 +67,11 @@ async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
     const item = items[0];
     
     try {
-      // Create Node instance via factory pattern
-      const node = await Node.create(item.node, client);
+      // Resolve working directory
+      const workingDir = resolveWorkingDir(item.task.workingDir);
+      
+      // Create Node instance with custom workingDir
+      const node = await Node.create(item.node, client, { workingDir });
       
       // Process node (calls OpenCode, generates artifact)
       const result = await node.process();
