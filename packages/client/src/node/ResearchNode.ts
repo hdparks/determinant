@@ -5,9 +5,13 @@ import { readFile } from 'fs/promises';
 /**
  * ResearchNode conducts codebase research to answer questions.
  * 
+ * The agent is instructed to build the research document incrementally,
+ * writing findings as they are discovered rather than waiting until all
+ * research is complete. This ensures that if the agent is interrupted
+ * (timeout, crash), significant progress is preserved and the retry
+ * can continue from the partial artifact.
+ * 
  * Uses stage-based artifact path (.determinant/artifacts/{taskId}/research.md)
- * which enables crash recovery: if an agent crashes mid-research, the next
- * invocation can detect the partial work and continue from where it left off.
  */
 export class ResearchNode extends Node {
   async process(): Promise<ProcessResult> {
@@ -28,20 +32,27 @@ ${this.content}
 
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
-   - IF IT EXISTS: Review the existing research and continue/complete it
+   - IF IT EXISTS: Review the existing research and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new research document from scratch
 
-2. For each question:
+2. IMPORTANT: Update the document continuously as you make progress.
+   Don't wait until you've finished all work to write the artifact.
+   If the process is interrupted, your incremental updates will be preserved.
+
+3. Start with the most critical questions first (those blocking implementation).
+   Answer them in priority order, updating the document as you go.
+
+4. For each question:
    - Research the codebase thoroughly (use grep, read files, explore patterns)
    - Apply best practices and solid engineering judgment
    - Provide clear, actionable answers
    
-3. The research document should be well-organized with:
+5. The research document should be well-organized with:
    - Each question followed by its answer
    - Code examples or file references where relevant
    - Recommendations based on findings
 
-4. Finally, respond with ONLY this JSON (no other text):
+6. Finally, respond with ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 how confident you were before research>,

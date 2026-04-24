@@ -2,6 +2,14 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
 
+/**
+ * ImplementNode executes the implementation plan and creates detailed notes.
+ * 
+ * The agent is instructed to update implementation notes continuously,
+ * documenting what was done after each file or major change rather than
+ * waiting until all work is complete. This preserves progress if interrupted
+ * and provides clear tracking of implementation status.
+ */
 export class ImplementNode extends Node {
   async process(): Promise<ProcessResult> {
     if (this.config.verbose) {
@@ -21,19 +29,23 @@ ${this.content}
 
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
-   - IF IT EXISTS: Review the existing implementation notes and continue/complete the implementation
+   - IF IT EXISTS: Review the existing implementation notes and ADD to them - preserve all previous content
    - IF IT DOESN'T EXIST: Start implementing from scratch
 
-2. Execute each step in the plan
-3. Create detailed implementation notes at: ${artifactPath}
-4. The implementation notes should include:
+2. IMPORTANT: Update the document continuously as you make progress.
+   Don't wait until you've finished all work to write the artifact.
+   Update your implementation notes after completing each file or major task.
+
+3. Execute each step in the plan
+4. Create detailed implementation notes at: ${artifactPath}
+5. The implementation notes should include:
    - What was implemented
    - Code changes made (specific files and changes)
    - Any deviations from the plan and why
    - Issues encountered and how they were resolved
    - Current state of the implementation
 
-5. Return ONLY this JSON (no other text):
+6. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 confidence before implementation>,

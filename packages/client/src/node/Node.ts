@@ -5,6 +5,25 @@ import { spawn } from 'child_process';
 import { readFile, mkdir, access, constants } from 'fs/promises';
 import { join } from 'path';
 
+/**
+ * Abstract base class for task stage processing nodes.
+ * 
+ * Each node represents a state transition in the task pipeline
+ * (e.g., Questions → Research → Plan → Implement → Validate → Released).
+ * 
+ * ## Incremental Artifact Building
+ * 
+ * Nodes instruct OpenCode agents to build markdown artifacts incrementally:
+ * - Agents write content continuously as they work, not all at the end
+ * - Progress is preserved at deterministic paths if interrupted
+ * - Retries detect existing artifacts and continue from partial work
+ * - This improves resilience to timeouts and crashes
+ * 
+ * Artifact paths follow the pattern:
+ * `.determinant/artifacts/{taskId}/{stage}.md`
+ * 
+ * The same path is used across retries, enabling crash recovery.
+ */
 export abstract class Node implements NodeInterface {
   // Properties from NodeInterface
   public readonly id: string;

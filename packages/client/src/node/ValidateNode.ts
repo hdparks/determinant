@@ -3,6 +3,18 @@ import type { ProcessResult } from './types.js';
 import type { Node as NodeInterface } from '@determinant/types';
 import { readFile } from 'fs/promises';
 
+/**
+ * ValidateNode runs verification tests and creates validation reports.
+ * 
+ * The agent is instructed to document test results incrementally as each
+ * verification is run. However, the final SUCCESS/FAILURE status can only
+ * be determined after all tests complete. This incremental documentation
+ * preserves progress if interrupted during long test runs.
+ * 
+ * Creates different child nodes based on validation outcome:
+ * - SUCCESS → ReleasedNode (task complete)
+ * - FAILURE → PlanNode (repair cycle)
+ */
 export class ValidateNode extends Node {
   async process(): Promise<ProcessResult> {
     if (this.config.verbose) {
@@ -32,14 +44,18 @@ ${this.content}
 
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
-   - IF IT EXISTS: Review the existing validation report and update/complete it
+   - IF IT EXISTS: Review the existing validation report and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new validation report from scratch
 
-2. Run each verification test outlined in the plan
-3. Compare the implementation against the original proposal requirements
-4. Create a validation report at: ${artifactPath}
+2. IMPORTANT: Update the document continuously as you make progress.
+   Don't wait until you've finished all work to write the artifact.
+   Document test results as you run each verification, building the report incrementally.
 
-5. The validation report MUST:
+3. Run each verification test outlined in the plan
+4. Compare the implementation against the original proposal requirements
+5. Create a validation report at: ${artifactPath}
+
+6. The validation report MUST:
    - Start with a clear SUCCESS or FAILURE status
    - List each verification test and its result
    - Verify that all proposal requirements are met
@@ -47,7 +63,7 @@ YOUR JOB:
    - If FAILURE: clearly identify what failed and why
    - If SUCCESS: confirm all requirements satisfied
 
-6. Return ONLY this JSON (no other text):
+7. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "status": "success" OR "failure",

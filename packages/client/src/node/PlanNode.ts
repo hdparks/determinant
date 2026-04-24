@@ -2,6 +2,17 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
 
+/**
+ * PlanNode creates implementation plans from research or repair plans from validation failures.
+ * 
+ * The agent is instructed to build plans incrementally, starting with an overview
+ * and progressively adding details for each step. For repair plans, failures are
+ * addressed one-by-one. This incremental approach preserves progress if interrupted.
+ * 
+ * Supports two modes:
+ * - Initial plan: Research → Plan (builds from research findings)
+ * - Repair plan: Validate → Plan (addresses validation failures)
+ */
 export class PlanNode extends Node {
   async process(): Promise<ProcessResult> {
     await this.ensureArtifactDir();
@@ -27,16 +38,20 @@ ${this.content}
 
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
-   - IF IT EXISTS: Review the existing repair plan and continue/complete it
+   - IF IT EXISTS: Review the existing repair plan and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new repair plan from scratch
 
-2. The plan should:
+2. IMPORTANT: Update the document continuously as you make progress.
+   Don't wait until you've finished all work to write the artifact.
+   Build the repair plan incrementally, addressing each failure as you analyze it.
+
+3. The plan should:
    - Address each failure identified in the validation report
    - Explain what went wrong and why
    - Provide specific fixes for each issue
    - Include verification steps to confirm the fixes work
    
-3. Return ONLY this JSON (no other text):
+4. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10>,
@@ -74,21 +89,25 @@ Full research document: ${researchLink}
 
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
-   - IF IT EXISTS: Review the existing plan and continue/complete it
+   - IF IT EXISTS: Review the existing plan and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new plan from scratch
 
-2. Create a detailed, step-by-step implementation plan that:
+2. IMPORTANT: Update the document continuously as you make progress.
+   Don't wait until you've finished all work to write the artifact.
+   Build the plan incrementally - start with an overview, then add details for each step.
+
+3. Create a detailed, step-by-step implementation plan that:
    - Breaks down the proposal into concrete, actionable tasks
    - Specifies exact file paths that need to be created or modified
    - Includes code patterns and examples from the research
    - Lists any dependencies that need to be added or updated
    - Provides verification steps for each major task
 
-3. The plan should be specific enough that a developer could follow it without needing to ask clarifying questions.
+4. The plan should be specific enough that a developer could follow it without needing to ask clarifying questions.
 
-4. IMPORTANT: Since the full research document is available via the link above, you should reference specific sections when needed rather than duplicating large amounts of research content.
+5. IMPORTANT: Since the full research document is available via the link above, you should reference specific sections when needed rather than duplicating large amounts of research content.
 
-5. Return ONLY this JSON (no other text):
+6. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10>,
