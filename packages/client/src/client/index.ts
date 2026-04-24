@@ -1,4 +1,4 @@
-import { Task, TaskState, Node, HeapConfig, QueueItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest } from '@determinant/types';
+import { Task, TaskState, Node, HeapConfig, QueueItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskDependencyRequest } from '@determinant/types';
 
 const DEFAULT_BASE_URL = process.env.DETERMINANT_SERVER_URL ?? 'http://localhost:10110';
 
@@ -71,6 +71,17 @@ export class DeterminantClient {
       method: 'PATCH',
       body: JSON.stringify(req),
     });
+  }
+
+  async setTaskDependency(id: string, dependsOnTaskId: string | null): Promise<{ task: Task }> {
+    return this.request(`/api/tasks/${id}/dependency`, {
+      method: 'PATCH',
+      body: JSON.stringify({ dependsOnTaskId }),
+    });
+  }
+
+  async clearTaskDependency(id: string): Promise<{ task: Task }> {
+    return this.setTaskDependency(id, null);
   }
 
   /**

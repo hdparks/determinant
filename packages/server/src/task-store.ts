@@ -1,16 +1,76 @@
 import { getDb, newId } from './db.js';
 import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 
-export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3, workingDir: string | null = null): Task {
+/**
+ * Check if setting a dependency would create a circular reference
+ * Uses iterative traversal (more efficient than recursive for shallow graphs)
+ * 
+ * @param childId - Task that will have the dependency
+ * @param parentId - Task that will be depended upon
+ * @returns true if cycle would be created
+ */
+export function wouldCreateCycle(childId: string, parentId: string): boolean {
+  const db = getDb();
+  
+  // Self-dependency check
+  if (childId === parentId) {
+    return true;
+  }
+  
+  // Traverse up the dependency chain from proposed parent
+  // If we reach childId, it's a cycle
+  let currentId: string | null = parentId;
+  const visited = new Set<string>();
+  const maxDepth = 100; // Prevent infinite loops from existing corrupt data
+  
+  while (currentId && visited.size < maxDepth) {
+    // If we reached the child, cycle detected
+    if (currentId === childId) {
+      return true;
+    }
+    
+    visited.add(currentId);
+    
+    // Get next parent in chain
+    const row = db.prepare(`
+      SELECT depends_on_task_id 
+      FROM tasks 
+      WHERE id = ?
+    `).get(currentId) as { depends_on_task_id: string | null } | undefined;
+    
+    if (!row) {
+      break; // Task not found, stop traversal
+    }
+    
+    currentId = row.depends_on_task_id;
+  }
+  
+  return false; // No cycle detected
+}
+
+export function createTask(vibe: string, pins: string[] = [], hints: string[] = [], priority: number = 3, workingDir: string | null = null, dependsOnTaskId: string | null = null): Task {
   const db = getDb();
   const taskId = newId();
   const now = new Date().toISOString();
 
+  // Validate dependency
+  if (dependsOnTaskId) {
+    const parent = getTask(dependsOnTaskId);
+    if (!parent) {
+      throw new Error(`Invalid dependsOnTaskId: task ${dependsOnTaskId} not found`);
+    }
+    
+    // Check for circular dependency
+    if (wouldCreateCycle(taskId, dependsOnTaskId)) {
+      throw new Error('Circular dependency detected');
+    }
+  }
+
   // Insert task
   db.prepare(`
-    INSERT INTO tasks (id, vibe, pins, hints, state, priority, working_dir, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?, ?)
-  `).run(taskId, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, workingDir, now, now);
+    INSERT INTO tasks (id, vibe, pins, hints, state, priority, working_dir, depends_on_task_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'Proposal', ?, ?, ?, ?, ?)
+  `).run(taskId, vibe, JSON.stringify(pins), JSON.stringify(hints), priority, workingDir, dependsOnTaskId, now, now);
 
   // Auto-create initial Proposal node
   const proposalNodeId = newId();
@@ -32,6 +92,7 @@ export function createTask(vibe: string, pins: string[] = [], hints: string[] = 
     priority,
     manualWeight: 0,
     workingDir,
+    dependsOnTaskId,
     createdAt: new Date(now),
     updatedAt: new Date(now),
   };
@@ -41,7 +102,8 @@ export function getTask(id: string): Task | null {
   const db = getDb();
   const row = db.prepare(`
     SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight, 
-           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
+           working_dir as workingDir, depends_on_task_id as dependsOnTaskId,
+           created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE id = ?
   `).get(id) as any;
 
@@ -61,7 +123,8 @@ export function getTasksByState(state: TaskState): Task[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight,
-           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
+           working_dir as workingDir, depends_on_task_id as dependsOnTaskId,
+           created_at as createdAt, updated_at as updatedAt
     FROM tasks WHERE state = ?
     ORDER BY created_at DESC
   `).all(state) as any[];
@@ -80,7 +143,8 @@ export function getAllTasks(): Task[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT id, vibe, pins, hints, state, priority, manual_weight as manualWeight,
-           working_dir as workingDir, created_at as createdAt, updated_at as updatedAt
+           working_dir as workingDir, depends_on_task_id as dependsOnTaskId,
+           created_at as createdAt, updated_at as updatedAt
     FROM tasks ORDER BY created_at DESC
   `).all() as any[];
 
@@ -296,4 +360,39 @@ export function getTaskWithNodes(taskId: string): { task: Task; nodes: Node[] } 
 
   const nodes = getNodesByTask(taskId);
   return { task, nodes };
+}
+
+export function updateTaskDependency(id: string, dependsOnTaskId: string | null): Task | null {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  // Validate task exists
+  const task = getTask(id);
+  if (!task) {
+    return null;
+  }
+  
+  // Validate parent exists (if setting dependency)
+  if (dependsOnTaskId !== null) {
+    const parent = getTask(dependsOnTaskId);
+    if (!parent) {
+      throw new Error(`Invalid dependsOnTaskId: task ${dependsOnTaskId} not found`);
+    }
+    
+    // Prevent self-dependency
+    if (dependsOnTaskId === id) {
+      throw new Error('Task cannot depend on itself');
+    }
+    
+    // Check for circular dependency
+    if (wouldCreateCycle(id, dependsOnTaskId)) {
+      throw new Error('Circular dependency detected');
+    }
+  }
+
+  db.prepare(`
+    UPDATE tasks SET depends_on_task_id = ?, updated_at = ? WHERE id = ?
+  `).run(dependsOnTaskId, now, id);
+
+  return getTask(id);
 }

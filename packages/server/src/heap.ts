@@ -56,12 +56,19 @@ export class PriorityHeap {
         t.manual_weight as manualWeight,
         t.working_dir as workingDir,
         t.created_at as taskCreatedAt,
-        t.updated_at as taskUpdatedAt
+        t.updated_at as taskUpdatedAt,
+        t.depends_on_task_id as dependsOnTaskId
       FROM nodes n
       INNER JOIN tasks t ON n.task_id = t.id
+      LEFT JOIN tasks parent_task ON t.depends_on_task_id = parent_task.id
       WHERE t.state != 'Released'
         AND n.processed_at IS NULL
+        AND (
+          t.depends_on_task_id IS NULL 
+          OR parent_task.state = 'Released'
+        )
       ORDER BY n.created_at DESC
+      ${limit ? `LIMIT ${limit}` : ''}
     `).all() as any[];
 
     // Map rows to QueueItems with scores
@@ -88,6 +95,7 @@ export class PriorityHeap {
         priority: row.priority,
         manualWeight: row.manualWeight,
         workingDir: row.workingDir,
+        dependsOnTaskId: row.dependsOnTaskId,
         createdAt: new Date(row.taskCreatedAt),
         updatedAt: new Date(row.taskUpdatedAt),
       };
@@ -105,8 +113,8 @@ export class PriorityHeap {
     // Sort by score descending (higher score = higher priority)
     items.sort((a, b) => b.score - a.score);
 
-    // Apply limit if specified
-    if (limit !== undefined && limit > 0) {
+    // Apply limit if specified (only if not already applied in SQL)
+    if (limit !== undefined && limit > 0 && !limit) {
       return items.slice(0, limit);
     }
 

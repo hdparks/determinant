@@ -8,6 +8,7 @@ export function initDb(path: string = './determinant.db'): Database.Database {
 
   db = new Database(path);
   db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
@@ -51,6 +52,28 @@ export function initDb(path: string = './determinant.db'): Database.Database {
 
   if (hasWorkingDir.count === 0) {
     db.exec(`ALTER TABLE tasks ADD COLUMN working_dir TEXT`);
+  }
+
+  // Migration: Add depends_on_task_id column if it doesn't exist
+  const hasDependsOnTaskId = db.prepare(`
+    SELECT COUNT(*) as count 
+    FROM pragma_table_info('tasks') 
+    WHERE name = 'depends_on_task_id'
+  `).get() as { count: number };
+
+  if (hasDependsOnTaskId.count === 0) {
+    db.exec(`
+      ALTER TABLE tasks 
+      ADD COLUMN depends_on_task_id TEXT 
+      REFERENCES tasks(id) 
+      ON DELETE SET NULL
+    `);
+    
+    // Create index for performance
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_depends_on 
+      ON tasks(depends_on_task_id)
+    `);
   }
 
   return db;

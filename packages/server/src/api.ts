@@ -6,6 +6,8 @@ import {
   getTasksByState,
   updateTaskState,
   updateTaskPriority,
+  updateTaskDependency,
+  wouldCreateCycle,
   getTaskWithNodes,
   createNode,
   getNode,
@@ -13,7 +15,7 @@ import {
   markNodeProcessed,
 } from './task-store.js';
 import { getHeap } from './heap.js';
-import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest } from '@determinant/types';
+import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskDependencyRequest } from '@determinant/types';
 
 const router = Router();
 
@@ -69,9 +71,24 @@ router.post('/tasks', (req: Request, res: Response) => {
   const pins = body.pins ?? [];
   const hints = body.hints ?? [];
   const workingDir = body.workingDir ?? null;
-  const task = createTask(body.vibe, pins, hints, priority, workingDir);
+  const dependsOnTaskId = body.dependsOnTaskId ?? null;
+  
+  // Validate dependency exists
+  if (dependsOnTaskId) {
+    const parentTask = getTask(dependsOnTaskId);
+    if (!parentTask) {
+      res.status(400).json({ error: 'Invalid dependsOnTaskId: task not found' });
+      return;
+    }
+  }
 
-  res.status(201).json({ task });
+  try {
+    const task = createTask(body.vibe, pins, hints, priority, workingDir, dependsOnTaskId);
+    res.status(201).json({ task });
+  } catch (error) {
+    // Catch circular dependency errors
+    res.status(400).json({ error: (error as Error).message });
+  }
 });
 
 router.get('/tasks/:id', (req: Request, res: Response) => {
@@ -130,6 +147,46 @@ router.patch('/tasks/:id/priority', (req: Request, res: Response) => {
   }
 
   res.json({ task });
+});
+
+router.patch('/tasks/:id/dependency', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const body = req.body as UpdateTaskDependencyRequest;
+
+  // Validate task exists
+  const task = getTask(id);
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+
+  // Validate parent task exists (if setting dependency)
+  if (body.dependsOnTaskId !== null) {
+    const parentTask = getTask(body.dependsOnTaskId);
+    if (!parentTask) {
+      res.status(400).json({ error: 'Invalid dependsOnTaskId: task not found' });
+      return;
+    }
+    
+    // Prevent self-dependency
+    if (body.dependsOnTaskId === id) {
+      res.status(400).json({ error: 'Task cannot depend on itself' });
+      return;
+    }
+    
+    // Prevent circular dependencies
+    if (wouldCreateCycle(id, body.dependsOnTaskId)) {
+      res.status(400).json({ error: 'Circular dependency detected' });
+      return;
+    }
+  }
+
+  try {
+    const updatedTask = updateTaskDependency(id, body.dependsOnTaskId);
+    res.json({ task: updatedTask });
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
+  }
 });
 
 // Node routes

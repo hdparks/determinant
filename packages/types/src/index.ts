@@ -11,6 +11,7 @@ export interface Task {
   priority: number;
   manualWeight: number;
   workingDir: string | null;
+  dependsOnTaskId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +58,7 @@ export interface CreateTaskRequest {
   hints?: string[];
   priority?: number;
   workingDir?: string;
+  dependsOnTaskId?: string;
 }
 
 export interface UpdateTaskStateRequest {
@@ -65,6 +67,10 @@ export interface UpdateTaskStateRequest {
 
 export interface UpdateTaskPriorityRequest {
   priority: number;
+}
+
+export interface UpdateTaskDependencyRequest {
+  dependsOnTaskId: string | null;
 }
 
 export interface TaskFilter {
