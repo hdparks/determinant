@@ -7,9 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w packages/types && npm run build -w packages/server && npm run build -w packages/client",
+    "build": "npm run build -w packages/types && npm run build -w packages/server && npm run build -w packages/client && npm run build -w packages/web",
     "dev:server": "npm run dev -w packages/server",
     "dev:cli": "npm run dev -w packages/client",
+    "dev:web": "npm run dev -w packages/web",
     "cli": "npm run cli -w packages/client",
     "run": "npm run run -w packages/client",
     "test": "npm run test -w packages/client",

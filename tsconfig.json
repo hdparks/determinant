@@ -15,6 +15,7 @@
   "references": [
     { "path": "./packages/types" },
     { "path": "./packages/server" },
-    { "path": "./packages/client" }
+    { "path": "./packages/client" },
+    { "path": "./packages/web" }
   ]
 }
