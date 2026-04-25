@@ -50,8 +50,9 @@ export abstract class Node implements NodeInterface {
     this.content = data.content;
     this.confidenceBefore = data.confidenceBefore;
     this.confidenceAfter = data.confidenceAfter;
-    this.createdAt = data.createdAt;
-    this.processedAt = data.processedAt;
+    // Ensure dates are Date objects (API returns ISO strings)
+    this.createdAt = data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt);
+    this.processedAt = data.processedAt ? (data.processedAt instanceof Date ? data.processedAt : new Date(data.processedAt)) : null;
     this.client = client;
     this.config = {
       maxRetries: 3,

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { resolve } from 'path';
 import { DeterminantClient } from './client/index.js';
 import { TaskState, TASK_STATES } from '@determinant/types';
 
@@ -25,9 +26,17 @@ function parseArgs(args: string[]): CliArgs {
         (flags[key] as string[]).push(value);
         return false;
       }
-      // Convert kebab-case to camelCase for working-dir
-      const flagKey = key === 'working-dir' ? 'workingDir' : key;
+      // Convert kebab-case to camelCase for working-dir and depends-on
+      const flagKey = key === 'working-dir' ? 'workingDir' 
+                    : key === 'depends-on' ? 'dependsOn'
+                    : key;
       flags[flagKey] = value ?? true;
+      return false;
+    }
+    // Handle short flags like -y
+    if (arg.startsWith('-') && !arg.startsWith('--')) {
+      const shortFlag = arg.slice(1);
+      flags[shortFlag] = true;
       return false;
     }
     return true;
@@ -47,14 +56,31 @@ async function cmdList(client: DeterminantClient, args: CliArgs) {
 
   console.log(`\nTasks (${result.tasks.length}):\n`);
   for (const task of result.tasks) {
-    console.log(`  ${task.id.slice(-8)} | ${task.state.padEnd(10)} | pri:${task.priority} | ${task.vibe}`);
+    console.log(`  ${task.id} | ${task.state.padEnd(10)} | pri:${task.priority} | ${task.vibe}`);
   }
 }
 
 async function cmdAdd(client: DeterminantClient, args: CliArgs) {
   const vibe = args.flags.vibe ? String(args.flags.vibe) : args.args.join(' ');
   const priority = args.flags.priority ? parseInt(String(args.flags.priority), 10) : 3;
-  const workingDir = args.flags.workingDir ? String(args.flags.workingDir) : undefined;
+  
+  // Validate priority if provided
+  if (args.flags.priority !== undefined && (isNaN(priority) || priority < 1 || priority > 5)) {
+    console.error('Error: Priority must be a number between 1 and 5');
+    console.error('Usage: det add "<vibe>" --priority=1-5');
+    process.exit(1);
+  }
+  
+  // Default to current working directory, or resolve provided path
+  const workingDir = args.flags.workingDir 
+    ? resolve(String(args.flags.workingDir))
+    : process.cwd();
+  
+  // Extract dependsOn flag
+  const dependsOnTaskId = args.flags.dependsOn 
+    ? String(args.flags.dependsOn)
+    : undefined;
+  
   const pinsRaw = args.flags.pin;
   const hintsRaw = args.flags.hint;
   
@@ -65,8 +91,8 @@ async function cmdAdd(client: DeterminantClient, args: CliArgs) {
 
   if (!vibe) {
     console.error('Error: Vibe required');
-    console.error('Usage: det add --vibe="..." [--pin="..." --hint="..." --priority=1-5 --working-dir="/path"]');
-    console.error('   or: det add "<vibe>" [--pin="..." --hint="..." --priority=1-5 --working-dir="/path"]');
+    console.error('Usage: det add --vibe="..." [--pin="..." --hint="..." --priority=1-5 --working-dir="/path" --depends-on=<task-id>]');
+    console.error('   or: det add "<vibe>" [--pin="..." --hint="..." --priority=1-5 --working-dir="/path" --depends-on=<task-id>]');
     process.exit(1);
   }
 
@@ -81,7 +107,7 @@ async function cmdAdd(client: DeterminantClient, args: CliArgs) {
     }
   }
 
-  const result = await client.createTask({ vibe, pins, hints, priority, workingDir });
+  const result = await client.createTask({ vibe, pins, hints, priority, workingDir, dependsOnTaskId });
   const task = result.task;
 
   console.log(`Created task: ${task.id}`);
@@ -90,6 +116,9 @@ async function cmdAdd(client: DeterminantClient, args: CliArgs) {
   console.log(`  State: ${task.state}`);
   if (task.workingDir) {
     console.log(`  Working Dir: ${task.workingDir}`);
+  }
+  if (task.dependsOnTaskId) {
+    console.log(`  Depends On: ${task.dependsOnTaskId}`);
   }
   if (task.pins.length > 0) {
     console.log(`  Pins:`);
@@ -119,6 +148,9 @@ async function cmdGet(client: DeterminantClient, args: CliArgs) {
   console.log(`Priority: ${full.task.priority}`);
   if (full.task.workingDir) {
     console.log(`Working Dir: ${full.task.workingDir}`);
+  }
+  if (full.task.dependsOnTaskId) {
+    console.log(`Depends On: ${full.task.dependsOnTaskId}`);
   }
   console.log(`Created: ${full.task.createdAt}`);
   console.log(`Updated: ${full.task.updatedAt}`);
@@ -186,6 +218,83 @@ async function cmdSetState(client: DeterminantClient, args: CliArgs) {
   }
 }
 
+async function cmdSetWeight(client: DeterminantClient, args: CliArgs) {
+  const id = args.args[0];
+  const weightStr = args.args[1];
+
+  if (!id || weightStr === undefined) {
+    console.error('Usage: det set-weight <task-id> <weight>');
+    process.exit(1);
+  }
+
+  const weight = parseFloat(weightStr);
+  if (!Number.isFinite(weight)) {
+    console.error('Error: Weight must be a valid number');
+    process.exit(1);
+  }
+
+  try {
+    const result = await client.updateTaskManualWeight(id, { manualWeight: weight });
+    console.log(`Updated task ${id} manual weight to ${result.task.manualWeight}`);
+  } catch (err) {
+    console.error('Error:', err);
+    process.exit(1);
+  }
+}
+
+async function cmdDelete(client: DeterminantClient, args: CliArgs) {
+  const id = args.args[0];
+
+  if (!id) {
+    console.error('Usage: det delete <task-id> [--yes]');
+    console.error('       det delete <task-id> -y');
+    process.exit(1);
+  }
+
+  // Fetch task details for confirmation message
+  let task;
+  try {
+    const result = await client.getTask(id);
+    task = result.task;
+  } catch (err) {
+    console.error(`Error: Task ${id} not found`);
+    process.exit(1);
+  }
+
+  // Show task details
+  console.log(`\nTask to delete:`);
+  console.log(`  ID: ${task.id}`);
+  console.log(`  Vibe: ${task.vibe}`);
+  console.log(`  State: ${task.state}`);
+  console.log(`  Priority: ${task.priority}`);
+  
+  // Check for dependents
+  const dependentsResult = await client.getDependents(id);
+  if (dependentsResult.dependents.length > 0) {
+    console.log(`\n⚠️  Warning: ${dependentsResult.dependents.length} task(s) depend on this task:`);
+    for (const dep of dependentsResult.dependents) {
+      console.log(`    - ${dep.id.slice(-8)}: ${dep.vibe}`);
+    }
+    console.log(`\nThese tasks will have their dependency cleared.`);
+  }
+
+  // Confirmation check
+  const hasYesFlag = args.flags.yes || args.flags.y;
+  if (!hasYesFlag) {
+    console.error(`\n❌ Deletion cancelled. Use --yes or -y to confirm deletion.`);
+    process.exit(1);
+  }
+
+  // Perform deletion
+  try {
+    await client.deleteTask(id);
+    console.log(`\n✅ Task ${id} deleted successfully`);
+  } catch (err) {
+    console.error('Error:', err);
+    process.exit(1);
+  }
+}
+
 async function cmdHeapConfig(client: DeterminantClient, args: CliArgs) {
   if (args.flags.set) {
     const setVal = String(args.flags.set);
@@ -211,6 +320,81 @@ async function cmdHeapConfig(client: DeterminantClient, args: CliArgs) {
   }
 }
 
+async function cmdCleanup(client: DeterminantClient, args: CliArgs) {
+  const shouldFix = args.flags.fix === true;
+
+  console.log('\n🔍 Scanning for orphaned nodes...\n');
+
+  // Detect orphaned nodes
+  const orphanedResult = await client.detectOrphanedNodes();
+  
+  if (orphanedResult.count === 0) {
+    console.log('✅ No orphaned nodes found!\n');
+  } else {
+    console.log(`⚠️  Found ${orphanedResult.count} orphaned node(s):\n`);
+    for (const node of orphanedResult.orphanedNodes) {
+      const nodeIdShort = node.nodeId.slice(-8);
+      const taskIdShort = node.taskId.slice(-8);
+      console.log(`  ${nodeIdShort} | task:${taskIdShort} | ${node.toStage}`);
+    }
+    console.log();
+
+    if (shouldFix) {
+      console.log('🔧 Fixing orphaned nodes...\n');
+      const nodeIds = orphanedResult.orphanedNodes.map(n => n.nodeId);
+      const fixResult = await client.fixOrphanedNodes(nodeIds);
+      console.log(`✅ Fixed ${fixResult.fixed} of ${fixResult.requested} orphaned nodes\n`);
+    } else {
+      console.log('💡 Run with --fix to mark these nodes as processed\n');
+    }
+  }
+
+  // Detect duplicate children
+  console.log('🔍 Scanning for duplicate children...\n');
+  const duplicateResult = await client.detectDuplicateChildren();
+  
+  if (duplicateResult.count === 0) {
+    console.log('✅ No duplicate children found!\n');
+  } else {
+    console.log(`⚠️  Found ${duplicateResult.count} duplicate group(s):\n`);
+    for (const dup of duplicateResult.duplicates) {
+      const parentIdShort = dup.parentNodeId.slice(-8);
+      const taskIdShort = dup.taskId.slice(-8);
+      console.log(`  Parent ${parentIdShort} | task:${taskIdShort} | ${dup.toStage} | ${dup.count} duplicates`);
+      for (const childId of dup.nodeIds) {
+        console.log(`    - ${childId.slice(-8)}`);
+      }
+    }
+    console.log();
+    console.log('💡 Duplicates require manual review. Identify which child to keep and delete others.\n');
+  }
+}
+
+async function cmdNotifyConfig(args: CliArgs) {
+  const { NotificationService } = await import('./notifications/index.js');
+  const notifications = new NotificationService();
+  
+  if (args.flags.test) {
+    const type = args.flags.test as string;
+    console.log(`Testing ${type} notification...`);
+    await notifications.notify(type as any, { message: 'Test notification' });
+    console.log('Notification sent!');
+    return;
+  }
+  
+  const config = notifications.getConfig();
+  console.log('\nNotification Configuration:\n');
+  console.log(`  Enabled: ${config.enabled}`);
+  console.log(`  Sound Enabled: ${config.soundEnabled}`);
+  console.log(`  Volume: ${config.volume}`);
+  console.log(`  Verbose: ${config.verbose}`);
+  console.log('\nSound Paths:');
+  for (const [type, path] of Object.entries(config.sounds)) {
+    console.log(`  ${type}: ${path || '(not set)'}`);
+  }
+  console.log();
+}
+
 async function cmdHelp() {
   console.log(`
 determinant - Agentic workflow pipeline
@@ -221,9 +405,13 @@ Commands:
   add --vibe="..."          Create a new task with vibe (goal/user story)
   list [state]              List tasks (optionally by state)
   get <task-id>             Get task details with nodes
+  delete <task-id> [--yes]  Delete a task (requires --yes flag)
   queue                     Show priority queue of nodes
   set-state <id> <state>   Manually set task state
+  set-weight <id> <weight> Set manual weight for task priority
   heap-config [--set=...]   Show/update heap configuration
+  cleanup [--fix]           Detect and optionally fix orphaned nodes
+  notify-config             Show notification settings
   help                    Show this help
 
 Options:
@@ -231,20 +419,29 @@ Options:
   --pin="..."              Acceptance criteria (can be repeated)
   --hint="..."             Additional context (can be repeated)
   --priority=1-5           Set task priority (1 highest, 5 lowest)
-  --working-dir="/path"    Working directory for task execution
+  --working-dir="/path"    Working directory for task execution (defaults to current directory)
+  --depends-on=<task-id>   Task dependency - this task will wait for the specified task to complete
   --state=<state>           Filter by state
   --limit=N                 Limit results
   --set=key=value,...       Set heap config values
+  --fix                     Fix detected issues (for cleanup command)
+  --yes, -y                 Confirm destructive operations (for delete)
 
 Examples:
   det add --vibe="Implement login flow" --pin="Use JWT" --pin="Support OAuth" --hint="Check auth.ts"
   det add "Quick task vibe" --priority=1
   det add --vibe="Fix auth bug" --working-dir="./packages/server"
+  det add --vibe="Deploy to prod" --depends-on=01ABC123 --priority=1
   det list Proposal
   det get 01ABC...
+  det delete 01ABC... --yes    # Delete task with confirmation
+  det rm 01ABC... -y           # Delete task (shorthand)
   det queue --limit=20
   det set-state 01ABC... Implement
+  det set-weight 01ABC... 10
   det heap-config --set=priorityWeight=0.7,confidenceWeight=0.3
+  det cleanup               # Detect orphaned nodes (dry-run)
+  det cleanup --fix         # Fix orphaned nodes
 
 States: ${TASK_STATES.join(', ')}
 `);
@@ -286,8 +483,22 @@ async function main() {
     case 'set-state':
       await cmdSetState(client, args);
       break;
+    case 'set-weight':
+      await cmdSetWeight(client, args);
+      break;
+    case 'delete':
+    case 'rm':
+      await cmdDelete(client, args);
+      break;
     case 'heap-config':
       await cmdHeapConfig(client, args);
+      break;
+    case 'cleanup':
+      await cmdCleanup(client, args);
+      break;
+    case 'notify-config':
+    case 'notifications':
+      await cmdNotifyConfig(args);
       break;
     case 'help':
     case '-h':

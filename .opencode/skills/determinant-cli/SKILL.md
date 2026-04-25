@@ -13,7 +13,7 @@ metadata:
 Determinant is an agentic workflow pipeline that manages tasks through a structured state progression. It provides two command-line interfaces:
 
 - **`det`** - Interactive task management (create, list, view, configure)
-- **`det run`** - Automated worker agent for queue processing
+- **`boblin`** - Automated worker agent for queue processing
 
 Tasks progress through states: Proposal → Questions → Research → Plan → Implement → Validate → Released
 
@@ -137,6 +137,26 @@ det set-state 01HZXXX... Implement
 
 ---
 
+### `det set-weight`
+
+Set a manual weight for a specific task to influence its priority in the queue.
+
+**Usage:**
+```bash
+det set-weight <task-id> <weight>
+```
+
+**Arguments:**
+- `task-id` (required) - The task ID
+- `weight` (required) - Manual weight value (numeric)
+
+**Example:**
+```bash
+det set-weight 01HZXXX... 100
+```
+
+---
+
 ### `det heap-config`
 
 View or update heap weight configuration for queue prioritization.
@@ -171,17 +191,17 @@ det help
 
 **Aliases:** `-h`, `--help`
 
-## Worker CLI (`det run`)
+## Worker CLI (`boblin`)
 
 The worker CLI provides an automated agent that processes tasks from the queue.
 
-### `det run work`
+### `boblin work`
 
 Start processing tasks from the priority queue.
 
 **Usage:**
 ```bash
-det run work [options]
+boblin work [options]
 ```
 
 **Options:**
@@ -196,22 +216,22 @@ The worker will:
 
 **Examples:**
 ```bash
-det run work                    # Process queue for 1 hour (default)
-det run work --ttl=1800         # Process queue for 30 minutes
-det run work --ttl=7200         # Process queue for 2 hours
+boblin work                    # Process queue for 1 hour (default)
+boblin work --ttl=1800         # Process queue for 30 minutes
+boblin work --ttl=7200         # Process queue for 2 hours
 ```
 
 **Aliases:** `w`
 
 ---
 
-### `det run help`
+### `boblin help`
 
 Show help message for the worker CLI.
 
 **Usage:**
 ```bash
-det run help
+boblin help
 ```
 
 **Aliases:** `-h`, `--help`
@@ -271,12 +291,23 @@ Specify where the task should be executed:
 det add --vibe="Fix auth bug" --working-dir="./packages/server"
 ```
 
+### Setting Manual Weights
+
+Boost a task's priority in the queue by setting a manual weight:
+
+```bash
+det set-weight 01HZXXX... 100    # Set high manual weight
+det set-weight 01HZYYY... 50     # Set medium manual weight
+```
+
+Manual weights combine with task priority and confidence scores according to the heap configuration weights. Higher manual weights increase the task's position in the processing queue.
+
 ### Running the Worker Agent
 
 Start the worker to automatically process queued tasks:
 
 ```bash
-det run work --ttl=3600    # Run for 1 hour
+boblin work --ttl=3600    # Run for 1 hour
 ```
 
 The worker exits when the queue is empty or TTL expires.
@@ -286,7 +317,7 @@ The worker exits when the queue is empty or TTL expires.
 Use this skill when you need to:
 
 - **Create or manage Determinant tasks** via the command line
-- **Understand command options** for the `det` or `det run` CLIs
+- **Understand command options** for the `det` or `boblin` CLIs
 - **Filter or query tasks** by state or priority
 - **Configure the task processing system** (heap weights, priorities)
 - **Automate task processing** with the worker agent

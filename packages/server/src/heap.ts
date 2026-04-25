@@ -68,7 +68,6 @@ export class PriorityHeap {
           OR parent_task.state = 'Released'
         )
       ORDER BY n.created_at DESC
-      ${limit ? `LIMIT ${limit}` : ''}
     `).all() as any[];
 
     // Map rows to QueueItems with scores
@@ -113,8 +112,8 @@ export class PriorityHeap {
     // Sort by score descending (higher score = higher priority)
     items.sort((a, b) => b.score - a.score);
 
-    // Apply limit if specified (only if not already applied in SQL)
-    if (limit !== undefined && limit > 0 && !limit) {
+    // Apply limit after scoring to ensure we get the highest priority items
+    if (limit !== undefined && limit > 0) {
       return items.slice(0, limit);
     }
 

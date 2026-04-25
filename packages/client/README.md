@@ -16,6 +16,30 @@ Configure the client via environment variables:
 - `DETERMINANT_SERVER_URL` - Server URL (default: http://localhost:10110)
 - `DETERMINANT_API_KEY` - API key for authentication (if server requires it)
 
+### Notification Settings
+
+The CLI includes a configurable notification system that can play sounds when tasks complete or when the worker processes nodes:
+
+- `DETERMINANT_NOTIFY_ENABLED` - Enable/disable notifications (default: true)
+- `DETERMINANT_NOTIFY_SOUND_ENABLED` - Enable/disable sound playback (default: true)
+- `DETERMINANT_NOTIFY_VOLUME` - Set volume 0.0-1.0 (default: 0.5)
+- `DETERMINANT_NOTIFY_VERBOSE` - Enable verbose logging (default: false)
+- `DETERMINANT_NOTIFY_SOUND_SUCCESS` - Path to success sound file (optional)
+- `DETERMINANT_NOTIFY_SOUND_ERROR` - Path to error sound file (optional)
+- `DETERMINANT_NOTIFY_SOUND_WARNING` - Path to warning sound file (optional)
+
+**Platform Requirements:**
+- **macOS**: Uses `afplay` (built-in)
+- **Linux**: Requires `aplay` (install via `sudo apt-get install alsa-utils`)
+
+**Example:**
+```bash
+export DETERMINANT_NOTIFY_ENABLED=true
+export DETERMINANT_NOTIFY_SOUND_ENABLED=true
+export DETERMINANT_NOTIFY_VOLUME=0.7
+export DETERMINANT_NOTIFY_SOUND_SUCCESS=/path/to/success.wav
+```
+
 ## Usage
 
 From the monorepo root:
@@ -122,6 +146,23 @@ npm run cli -- heap-config
 npm run cli -- heap-config --set=priorityWeight=0.7,confidenceWeight=0.3,manualWeight=0.0
 ```
 
+### `notify-config [--test=...]`
+View notification settings or test notifications.
+
+**Options:**
+- `--test=<type>` - Test a notification type
+
+**Examples:**
+```bash
+# View current notification settings
+det notify-config
+
+# Test a notification
+det notify-config --test=node_complete
+```
+
+**Aliases:** `notifications`
+
 ### `help`
 Show help message.
 
@@ -168,6 +209,24 @@ This predictable structure enables:
 - **Crash recovery**: Agents can resume partial work on retry
 - **Easy debugging**: Know exactly where to find artifacts
 - **Overwrite behavior**: Repair cycles update existing files
+
+### Artifact Building Strategy
+
+Agents are instructed to build markdown artifacts incrementally:
+- Write content continuously as work progresses
+- Don't wait until the end to create the artifact
+- Update files at deterministic paths: `.determinant/artifacts/{taskId}/{stage}.md`
+- If interrupted, partial progress is preserved
+- Retries detect existing artifacts and continue from where the previous attempt left off
+
+This approach improves resilience to timeouts and crashes, especially for
+long-running stages like Research (which may generate 1,000+ line documents).
+
+**Benefits:**
+- Faster recovery from interruptions (no need to start over)
+- Reduced total execution time when retries are needed
+- More robust handling of complex tasks
+- Better progress tracking (artifacts grow incrementally)
 
 ### Fallback Behavior
 

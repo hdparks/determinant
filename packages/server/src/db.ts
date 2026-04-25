@@ -94,3 +94,25 @@ export function closeDb(): void {
 export function newId(): string {
   return ulid();
 }
+
+/**
+ * Create a transaction-wrapped version of a function.
+ * All database operations within the function will execute atomically.
+ * 
+ * @param operation - Function to wrap in a transaction
+ * @returns Transaction-wrapped function that ensures atomicity
+ * 
+ * @example
+ * const atomicOp = createTransaction((arg1, arg2) => {
+ *   db.prepare('INSERT ...').run(arg1);
+ *   db.prepare('UPDATE ...').run(arg2);
+ *   // Both operations commit together or rollback together
+ * });
+ */
+export function createTransaction<T extends (...args: any[]) => any>(
+  operation: T
+): T {
+  const db = getDb();
+  // Use type assertion through unknown to satisfy TypeScript
+  return db.transaction(operation) as unknown as T;
+}

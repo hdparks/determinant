@@ -1,4 +1,4 @@
-import { Task, TaskState, Node, HeapConfig, QueueItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskDependencyRequest } from '@determinant/types';
+import { Task, TaskState, Node, HeapConfig, QueueItem, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskManualWeightRequest, UpdateTaskDependencyRequest } from '@determinant/types';
 
 const DEFAULT_BASE_URL = process.env.DETERMINANT_SERVER_URL ?? 'http://localhost:10110';
 
@@ -73,6 +73,13 @@ export class DeterminantClient {
     });
   }
 
+  async updateTaskManualWeight(id: string, req: UpdateTaskManualWeightRequest): Promise<{ task: Task }> {
+    return this.request(`/api/tasks/${id}/manual-weight`, {
+      method: 'PATCH',
+      body: JSON.stringify(req),
+    });
+  }
+
   async setTaskDependency(id: string, dependsOnTaskId: string | null): Promise<{ task: Task }> {
     return this.request(`/api/tasks/${id}/dependency`, {
       method: 'PATCH',
@@ -126,6 +133,29 @@ export class DeterminantClient {
     return response.node;
   }
 
+  /**
+   * Atomically complete node processing by creating a child node and marking the parent as processed.
+   * This ensures both operations succeed together or fail together, preventing orphaned nodes.
+   * 
+   * @param parentNodeId - The ID of the parent node being processed
+   * @param childNodeData - Data for the child node to create
+   * @returns Both the created child node and the updated parent node
+   */
+  async completeNodeProcessing(
+    parentNodeId: string,
+    childNodeData: {
+      toStage: TaskState;
+      content: string;
+      confidenceBefore?: number | null;
+      confidenceAfter?: number | null;
+    }
+  ): Promise<{ childNode: Node; parentNode: Node }> {
+    return this.request(`/api/nodes/${parentNodeId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(childNodeData),
+    });
+  }
+
   async getQueue(limit: number = 10): Promise<{ items: QueueItem[] }> {
     return this.request(`/api/queue?limit=${limit}`);
   }
@@ -138,6 +168,32 @@ export class DeterminantClient {
     return this.request('/api/heap-config', {
       method: 'PATCH',
       body: JSON.stringify(config),
+    });
+  }
+
+  // Cleanup methods
+  async detectOrphanedNodes(): Promise<{ orphanedNodes: Array<{ nodeId: string; taskId: string; toStage: string }>; count: number }> {
+    return this.request('/api/cleanup/orphaned-nodes');
+  }
+
+  async detectDuplicateChildren(): Promise<{ duplicates: Array<{ parentNodeId: string; taskId: string; toStage: string; count: number; nodeIds: string[] }>; count: number }> {
+    return this.request('/api/cleanup/duplicate-children');
+  }
+
+  async fixOrphanedNodes(nodeIds: string[]): Promise<{ fixed: number; requested: number }> {
+    return this.request('/api/cleanup/fix-orphaned-nodes', {
+      method: 'POST',
+      body: JSON.stringify({ nodeIds }),
+    });
+  }
+
+  async getDependents(id: string): Promise<{ dependents: Task[] }> {
+    return this.request(`/api/tasks/${id}/dependents`);
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    return this.request(`/api/tasks/${id}`, {
+      method: 'DELETE',
     });
   }
 }

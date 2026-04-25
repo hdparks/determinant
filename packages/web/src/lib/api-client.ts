@@ -5,7 +5,11 @@ import type {
   CreateTaskRequest,
   UpdateTaskStateRequest,
   UpdateTaskPriorityRequest,
+  UpdateTaskVibeRequest,
+  UpdateTaskDependencyRequest,
   TaskFilter,
+  GetDependentsResponse,
+  GetDependencyChainResponse,
 } from '@determinant/types';
 
 const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 'http://localhost:10110';
@@ -79,6 +83,24 @@ export const apiClient = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  updateTaskVibe: (id: string, data: UpdateTaskVibeRequest) =>
+    fetchApi<{ task: Task }>(`/api/tasks/${id}/vibe`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  updateTaskDependency: (id: string, data: UpdateTaskDependencyRequest) =>
+    fetchApi<{ task: Task }>(`/api/tasks/${id}/dependency`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  getDependents: (id: string) =>
+    fetchApi<GetDependentsResponse>(`/api/tasks/${id}/dependents`),
+
+  getDependencyChain: (id: string) =>
+    fetchApi<GetDependencyChainResponse>(`/api/tasks/${id}/dependency-chain`),
 
   // Queue endpoints
   getQueue: (limit = 10) =>

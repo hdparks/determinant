@@ -96,37 +96,37 @@ describe('Task dependency system', () => {
   });
 
   describe('Update task dependency', () => {
-    test('update dependency on existing task', () => {
+    test('update dependency on existing task', async () => {
       const parent = createTask('Parent task');
       const child = createTask('Child task');
       
-      const updated = updateTaskDependency(child.id, parent.id);
+      const updated = await updateTaskDependency(child.id, parent.id);
       expect(updated?.dependsOnTaskId).toBe(parent.id);
     });
 
-    test('clear dependency by setting to null', () => {
+    test('clear dependency by setting to null', async () => {
       const parent = createTask('Parent task');
       const child = createTask('Child task', [], [], 3, null, parent.id);
       
-      const updated = updateTaskDependency(child.id, null);
+      const updated = await updateTaskDependency(child.id, null);
       expect(updated?.dependsOnTaskId).toBe(null);
     });
 
-    test('error when updating with invalid dependency', () => {
+    test('error when updating with invalid dependency', async () => {
       const task = createTask('Task');
       
-      expect(() => {
-        updateTaskDependency(task.id, 'invalid-id');
-      }).toThrow('Invalid dependsOnTaskId: task invalid-id not found');
+      await expect(async () => {
+        await updateTaskDependency(task.id, 'invalid-id');
+      }).rejects.toThrow('Invalid dependsOnTaskId: task invalid-id not found');
     });
 
-    test('error when creating circular dependency via update', () => {
+    test('error when creating circular dependency via update', async () => {
       const taskA = createTask('Task A');
       const taskB = createTask('Task B', [], [], 3, null, taskA.id);
       
-      expect(() => {
-        updateTaskDependency(taskA.id, taskB.id);
-      }).toThrow('Circular dependency detected');
+      await expect(async () => {
+        await updateTaskDependency(taskA.id, taskB.id);
+      }).rejects.toThrow('Circular dependency detected');
     });
   });
 
@@ -220,7 +220,7 @@ describe('Task dependency system', () => {
       expect(queue[0].task.id).toBe(parent.id);
     });
 
-    test('removing dependency unblocks immediately', () => {
+    test('removing dependency unblocks immediately', async () => {
       const parent = createTask('Parent task');
       const child = createTask('Child task', [], [], 3, null, parent.id);
       
@@ -230,7 +230,7 @@ describe('Task dependency system', () => {
       expect(queue[0].task.id).toBe(parent.id);
       
       // Remove dependency
-      updateTaskDependency(child.id, null);
+      await updateTaskDependency(child.id, null);
       queue = heap.getQueue();
       expect(queue.length).toBe(2);
     });

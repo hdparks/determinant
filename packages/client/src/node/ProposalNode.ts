@@ -43,6 +43,16 @@ export class ProposalNode extends Node {
       console.log(`   ✅ Proposal document created at ${artifactPath}`);
     }
     
+    // Update this node's content in the database
+    this.content = markdown.trim();
+    this.confidenceBefore = 5;
+    this.confidenceAfter = 5;
+    await this.save();
+    
+    if (this.config.verbose) {
+      console.log(`   💾 Proposal content saved to database`);
+    }
+    
     // Create child node data with default confidence scores
     const childData = this.createChildNodeData(
       markdown.trim(),

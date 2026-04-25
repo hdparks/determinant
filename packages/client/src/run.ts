@@ -2,6 +2,7 @@
 
 import { DeterminantClient } from './client/index.js';
 import { Node } from './node/Node.js';
+import { NotificationService } from './notifications/index.js';
 import { resolve } from 'path';
 
 interface CliArgs {
@@ -18,7 +19,7 @@ function parseArgs(args: string[]): CliArgs {
   const filtered = rest.filter((arg) => {
     if (arg.startsWith('--')) {
       const [key, value] = arg.slice(2).split('=');
-      flags[key] = value ?? true;
+      flags[key.toLowerCase()] = value ?? true;
       return false;
     }
     return true;
@@ -52,8 +53,15 @@ async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
   const ttl = ttlSeconds * 1000; // Convert to milliseconds
   let processed = 0;
   let errors = 0;
+  let exitReason: 'ttl_expired' | 'queue_empty' | 'unknown' = 'unknown';
+
+  // Initialize notification service
+  const notifications = new NotificationService({
+    verbose: false,  // Keep notifications quiet by default
+  });
 
   console.log(`🚀 Worker started (TTL: ${ttlSeconds}s)\n`);
+  await notifications.notifyWorkerStarted();
 
   while (Date.now() - startTime < ttl) {
     // Get next highest priority item from queue
@@ -61,6 +69,8 @@ async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
     
     if (items.length === 0) {
       // Queue empty - exit immediately
+      exitReason = 'queue_empty';
+      await notifications.notifyQueueEmpty();
       break;
     }
 
@@ -76,37 +86,58 @@ async function cmdWork(client: DeterminantClient, ttlSeconds: number = 3600) {
       // Process node (calls OpenCode, generates artifact)
       const result = await node.process();
       
-      // Persist child node to database
-      await result.childNode.save();
-      
-      // Mark current node as processed to remove it from queue
-      await client.markNodeProcessed(item.node.id);
+      // Atomically complete processing: create child node + mark parent as processed
+      // This replaces the previous two-step approach to ensure atomicity
+      await client.completeNodeProcessing(item.node.id, {
+        toStage: result.childNode.toStage,
+        content: result.childNode.content,
+        confidenceBefore: result.childNode.confidenceBefore,
+        confidenceAfter: result.childNode.confidenceAfter,
+      });
       
       // Minimal logging: task_vibe | FromStage → ToStage
       const taskPreview = item.task.vibe.length > 50 
         ? item.task.vibe.slice(0, 50) + '...'
         : item.task.vibe;
       console.log(`✅ ${taskPreview} | ${node.toStage} → ${result.childNode.toStage}`);
+      
+      // Send notification for node completion
+      await notifications.notifyNodeComplete(item.node.id, result.childNode.toStage);
+      
       processed++;
       
     } catch (error) {
       const err = error as Error;
       console.error(`❌ Failed processing ${item.node.toStage} node ${item.node.id}: ${err.message}`);
+      await notifications.notifyError(`Node processing failed: ${item.node.id.slice(-8)}`, err);
       errors++;
       // Continue to next item
     }
   }
 
+  // Check if we exited due to TTL expiration
+  if (exitReason === 'unknown') {
+    exitReason = 'ttl_expired';
+  }
+
   // Final statistics
   const elapsed = Math.round((Date.now() - startTime) / 1000);
   console.log(`\n📊 Processed: ${processed} | Errors: ${errors} | Time: ${elapsed}s`);
+  
+  // Send appropriate completion notification
+  if (exitReason === 'ttl_expired') {
+    await notifications.notifyTTLExpired(ttlSeconds, processed);
+  }
+  
+  // Send worker completion notification
+  await notifications.notifyWorkerComplete(processed);
 }
 
 async function cmdHelp() {
   console.log(`
-determinant-run - Agent worker
+boblin - Agent worker
 
-Usage: det run <command> [options]
+Usage: boblin <command> [options]
 
 Commands:
   work                    Start processing tasks from queue
@@ -116,9 +147,9 @@ Options:
   --ttl=<seconds>         Time-to-live in seconds (default: 3600)
 
 Examples:
-  det run work                    # Process queue for 1 hour (default)
-  det run work --ttl=1800         # Process queue for 30 minutes
-  det run work --ttl=7200         # Process queue for 2 hours
+  boblin work                    # Process queue for 1 hour (default)
+  boblin work --ttl=1800         # Process queue for 30 minutes
+  boblin work --ttl=7200         # Process queue for 2 hours
 
 `);
 }

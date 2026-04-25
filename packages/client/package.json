@@ -4,7 +4,8 @@
   "description": "Determinant CLI client",
   "type": "module",
   "bin": {
-    "det": "./dist/cli.js"
+    "det": "./dist/cli.js",
+    "boblin": "./dist/run.js"
   },
   "scripts": {
     "build": "tsc",
@@ -18,11 +19,13 @@
   "keywords": ["determinant", "client", "cli"],
   "license": "MIT",
   "dependencies": {
-    "@determinant/types": "file:../types"
+    "@determinant/types": "file:../types",
+    "play-sound": "^1.1.6"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
     "@types/node": "^22.13.1",
+    "@types/play-sound": "^1.1.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
     "tsx": "^4.19.2",

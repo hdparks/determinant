@@ -3,21 +3,104 @@ import {
   createTask,
   getTask,
   getAllTasks,
+  getAllTasksWithScores,
   getTasksByState,
+  getTasksByStateWithScores,
   updateTaskState,
   updateTaskPriority,
+  updateTaskVibe,
   updateTaskDependency,
+  updateTaskManualWeight,
   wouldCreateCycle,
   getTaskWithNodes,
   createNode,
   getNode,
   updateNode,
   markNodeProcessed,
+  completeNodeProcessing,
+  detectOrphanedNodes,
+  detectDuplicateChildren,
+  fixOrphanedNodes,
+  getTaskDependents,
+  getDependencyChain,
+  deleteTask,
+  calculateTaskScore,
 } from './task-store.js';
 import { getHeap } from './heap.js';
-import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskDependencyRequest } from '@determinant/types';
+import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskManualWeightRequest, UpdateTaskDependencyRequest, UpdateTaskVibeRequest } from '@determinant/types';
+import { getEventBus } from './events.js';
+import { newId } from './db.js';
 
 const router = Router();
+
+// SSE endpoint (must be before authMiddleware since it has custom auth)
+router.get('/events', (req: Request, res: Response) => {
+  // Custom auth for SSE (query parameter instead of header)
+  // EventSource API doesn't support custom headers
+  const apiKey = req.query.apiKey as string;
+  const expectedKey = process.env.DETERMINANT_API_KEY;
+
+  if (expectedKey && !apiKey) {
+    res.status(401).json({ error: 'Unauthorized: API key required' });
+    return;
+  }
+
+  if (expectedKey && apiKey !== expectedKey) {
+    res.status(401).json({ error: 'Unauthorized: Invalid API key' });
+    return;
+  }
+
+  const eventBus = getEventBus();
+  
+  // Check capacity BEFORE setting headers (so we can send proper JSON response)
+  if (!eventBus.hasCapacity()) {
+    res.status(503).json({ 
+      error: 'Server at capacity. Too many SSE connections.' 
+    });
+    return;
+  }
+
+  // Set SSE headers (after capacity check passes)
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  // Disable response buffering (critical for SSE)
+  res.flushHeaders();
+
+  const clientId = newId();
+  
+  // Add client to active connections (double-check for race conditions)
+  const added = eventBus.addClient(clientId, res);
+  if (!added) {
+    // Race condition: capacity reached between hasCapacity() and addClient()
+    console.error(`[SSE] Race condition: capacity reached after pre-check`);
+    res.end();
+    return;
+  }
+  
+  console.log(`[SSE] Client connected: ${clientId} from ${req.ip}`);
+  
+  // Send initial connection success comment
+  res.write(': connected\n\n');
+
+  // Set up heartbeat (every 30 seconds)
+  const heartbeatInterval = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch (error) {
+      // Client disconnected, will be cleaned up in close handler
+      clearInterval(heartbeatInterval);
+    }
+  }, 30000);
+
+  // Clean up on client disconnect
+  req.on('close', () => {
+    clearInterval(heartbeatInterval);
+    eventBus.removeClient(clientId);
+    console.log(`[SSE] Client disconnected: ${clientId}`);
+  });
+});
 
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers['x-api-key'] as string;
@@ -51,9 +134,9 @@ router.get('/tasks', (req: Request, res: Response) => {
       res.status(400).json({ error: `Invalid state. Valid: ${TASK_STATES.join(', ')}` });
       return;
     }
-    tasks = getTasksByState(state);
+    tasks = getTasksByStateWithScores(state);
   } else {
-    tasks = getAllTasks();
+    tasks = getAllTasksWithScores();
   }
 
   res.json({ tasks });
@@ -68,6 +151,13 @@ router.post('/tasks', (req: Request, res: Response) => {
   }
 
   const priority = body.priority ?? 3;
+  
+  // Validate priority (consistent with PATCH endpoint)
+  if (typeof priority !== 'number' || isNaN(priority) || priority < 1 || priority > 5) {
+    res.status(400).json({ error: 'Priority must be between 1 and 5' });
+    return;
+  }
+  
   const pins = body.pins ?? [];
   const hints = body.hints ?? [];
   const workingDir = body.workingDir ?? null;
@@ -149,7 +239,62 @@ router.patch('/tasks/:id/priority', (req: Request, res: Response) => {
   res.json({ task });
 });
 
-router.patch('/tasks/:id/dependency', (req: Request, res: Response) => {
+router.patch('/tasks/:id/manual-weight', async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const body = req.body as UpdateTaskManualWeightRequest;
+
+  if (body.manualWeight === undefined) {
+    res.status(400).json({ error: 'Manual weight is required' });
+    return;
+  }
+
+  if (typeof body.manualWeight !== 'number' || !Number.isFinite(body.manualWeight)) {
+    res.status(400).json({ error: 'Manual weight must be a valid number' });
+    return;
+  }
+
+  const task = await updateTaskManualWeight(id, body.manualWeight);
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+
+  // Events already emitted in updateTaskManualWeight
+  res.json({ task });
+});
+
+router.patch('/tasks/:id/vibe', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const body = req.body as UpdateTaskVibeRequest;
+
+  // Type validation
+  if (typeof body.vibe !== 'string') {
+    res.status(400).json({ error: 'Vibe must be a string' });
+    return;
+  }
+
+  // Required field validation
+  if (!body.vibe || !body.vibe.trim()) {
+    res.status(400).json({ error: 'Vibe cannot be empty' });
+    return;
+  }
+
+  // Length validation
+  if (body.vibe.length > 1000) {
+    res.status(400).json({ error: 'Vibe must be 1000 characters or less' });
+    return;
+  }
+
+  const task = updateTaskVibe(id, body.vibe.trim());
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+
+  res.json({ task });
+});
+
+router.patch('/tasks/:id/dependency', async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const body = req.body as UpdateTaskDependencyRequest;
 
@@ -182,15 +327,58 @@ router.patch('/tasks/:id/dependency', (req: Request, res: Response) => {
   }
 
   try {
-    const updatedTask = updateTaskDependency(id, body.dependsOnTaskId);
+    const updatedTask = await updateTaskDependency(id, body.dependsOnTaskId);
     res.json({ task: updatedTask });
   } catch (error) {
     res.status(400).json({ error: (error as Error).message });
   }
 });
 
+// Get all tasks that depend on this task (reverse dependency lookup)
+router.get('/tasks/:id/dependents', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const task = getTask(id);
+  
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+  
+  const dependents = getTaskDependents(id);
+  res.json({ dependents });
+});
+
+// Get full dependency chain (ancestors)
+router.get('/tasks/:id/dependency-chain', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const task = getTask(id);
+  
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+  
+  const chain = getDependencyChain(id);
+  res.json({ chain });
+});
+
+// Delete a task
+router.delete('/tasks/:id', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  
+  const deleted = deleteTask(id);
+  
+  if (!deleted) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+  
+  // 204 No Content - successful deletion with no response body
+  res.status(204).send();
+});
+
 // Node routes
-router.post('/tasks/:taskId/nodes', (req: Request, res: Response) => {
+router.post('/tasks/:taskId/nodes', async (req: Request, res: Response) => {
   const taskId = req.params.taskId as string;
   const {
     toStage,
@@ -221,7 +409,7 @@ router.post('/tasks/:taskId/nodes', (req: Request, res: Response) => {
   }
 
   try {
-    const node = createNode(
+    const node = await createNode(
       taskId,
       toStage,
       content,
@@ -274,11 +462,11 @@ router.patch('/nodes/:nodeId', (req: Request, res: Response) => {
   }
 });
 
-router.post('/nodes/:nodeId/processed', (req: Request, res: Response) => {
+router.post('/nodes/:nodeId/processed', async (req: Request, res: Response) => {
   const nodeId = req.params.nodeId as string;
 
   try {
-    const node = markNodeProcessed(nodeId);
+    const node = await markNodeProcessed(nodeId);
     
     if (!node) {
       res.status(404).json({ error: 'Node not found' });
@@ -288,6 +476,46 @@ router.post('/nodes/:nodeId/processed', (req: Request, res: Response) => {
     res.json({ node });
   } catch (error) {
     console.error('Error marking node as processed:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Atomically complete node processing by creating child and marking parent as processed.
+ * This endpoint ensures both operations succeed together or fail together.
+ */
+router.post('/nodes/:parentId/complete', async (req: Request, res: Response) => {
+  const parentId = req.params.parentId as string;
+  const { toStage, content, confidenceBefore, confidenceAfter } = req.body;
+
+  // Validate required fields
+  if (!toStage || !content) {
+    res.status(400).json({ error: 'Missing required fields: toStage, content' });
+    return;
+  }
+
+  // Validate toStage is valid
+  if (!TASK_STATES.includes(toStage as TaskState)) {
+    res.status(400).json({ error: `Invalid toStage: ${toStage}` });
+    return;
+  }
+
+  try {
+    const result = await completeNodeProcessing(parentId, {
+      toStage: toStage as TaskState,
+      content,
+      confidenceBefore: confidenceBefore ?? null,
+      confidenceAfter: confidenceAfter ?? null,
+    });
+
+    res.json(result);
+  } catch (error) {
+    const err = error as Error;
+    if (err.message.includes('not found')) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    console.error('Error completing node processing:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -325,7 +553,57 @@ router.patch('/heap-config', (req: Request, res: Response) => {
   }
 
   heap.setConfig(config);
+  
+  // Config change affects entire queue scoring
+  getEventBus().emit('queue:updated', heap.getQueue());
+  
   res.json({ config: heap.getConfig() });
+});
+
+/**
+ * Detect orphaned nodes (nodes with children but still unprocessed)
+ */
+router.get('/cleanup/orphaned-nodes', (req: Request, res: Response) => {
+  try {
+    const orphanedNodes = detectOrphanedNodes();
+    res.json({ orphanedNodes, count: orphanedNodes.length });
+  } catch (error) {
+    console.error('Error detecting orphaned nodes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Detect duplicate children (multiple nodes with same parent and stage)
+ */
+router.get('/cleanup/duplicate-children', (req: Request, res: Response) => {
+  try {
+    const duplicates = detectDuplicateChildren();
+    res.json({ duplicates, count: duplicates.length });
+  } catch (error) {
+    console.error('Error detecting duplicate children:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Fix orphaned nodes by marking them as processed
+ */
+router.post('/cleanup/fix-orphaned-nodes', (req: Request, res: Response) => {
+  const { nodeIds } = req.body;
+
+  if (!Array.isArray(nodeIds)) {
+    res.status(400).json({ error: 'nodeIds must be an array' });
+    return;
+  }
+
+  try {
+    const fixed = fixOrphanedNodes(nodeIds);
+    res.json({ fixed, requested: nodeIds.length });
+  } catch (error) {
+    console.error('Error fixing orphaned nodes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

@@ -1,3 +1,99 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Explicitly register source paths for Tailwind CSS scanning */
+@source "./";
+@source "../index.html";
+
+@theme {
+  /* Dark mode configuration */
+  --color-brand-from-light: #2563eb;
+  --color-brand-from-dark: #1e40af;
+  --color-brand-to-light: #9333ea;
+  --color-brand-to-dark: #6b21a8;
+}
+
+@layer base {
+  /* Ensure smooth color transitions for dark mode */
+  * {
+    transition: colors 200ms;
+  }
+
+  /* Root element styling */
+  html {
+    font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Additional smooth transitions for interactive elements */
+  button, a, [role="button"] {
+    transition: all 150ms ease-in-out;
+  }
+
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Gradient header background */
+  .gradient-header {
+    background: linear-gradient(to right, #2563eb, #9333ea);
+  }
+  
+  :is(.dark .gradient-header) {
+    background: linear-gradient(to right, #1e40af, #6b21a8);
+  }
+}
+
+@layer utilities {
+  /* Screen reader only utility */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide in from bottom */
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
