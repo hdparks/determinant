@@ -2,6 +2,7 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import type { Node as NodeInterface } from '@determinant/types';
 import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 /**
  * ValidateNode runs verification tests and creates validation reports.
@@ -26,36 +27,61 @@ export class ValidateNode extends Node {
     
     const artifactPath = this.getStageArtifactPath();
     
-    // Get proposal and plan content from ancestors
-    const proposalContent = await this.getAncestorContent('Proposal');
-    const planContent = await this.getAncestorContent('Plan');
+    const proposalArtifactPath = join(
+      this.config.workingDir!,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      'proposal.md'
+    );
+    
+    const planArtifactPath = join(
+      this.config.workingDir!,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      'plan.md'
+    );
+    
+    const implementArtifactPath = join(
+      this.config.workingDir!,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      'implement.md'
+    );
     
     const prompt = `
 You are validating an implementation against the original proposal.
 
-ORIGINAL PROPOSAL:
-${proposalContent}
+ORIGINAL PROPOSAL ARTIFACT:
+Path: ${proposalArtifactPath}
+Purpose: Contains the original task description including the vibe (what to build), pins (requirements that must be honored), and hints (guidance from the user).
 
-PLAN (including verification steps):
-${planContent}
+IMPLEMENTATION PLAN ARTIFACT:
+Path: ${planArtifactPath}
+Purpose: Contains the step-by-step implementation plan including verification steps that should be run to validate the implementation.
 
-IMPLEMENTATION NOTES:
-${this.content}
+IMPLEMENTATION NOTES ARTIFACT:
+Path: ${implementArtifactPath}
+Purpose: Contains implementation notes documenting what was built, code changes made, deviations from the plan, issues encountered, and current implementation state.
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read all three artifacts to understand what was requested, what was planned, and what was actually implemented.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing validation report and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new validation report from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    Document test results as you run each verification, building the report incrementally.
 
-3. Run each verification test outlined in the plan
-4. Compare the implementation against the original proposal requirements
-5. Create a validation report at: ${artifactPath}
+4. Run each verification test outlined in the plan
+5. Compare the implementation against the original proposal requirements
+6. Create a validation report at: ${artifactPath}
 
-6. The validation report MUST:
+7. The validation report MUST:
    - Start with a clear SUCCESS or FAILURE status
    - List each verification test and its result
    - Verify that all proposal requirements are met
@@ -63,7 +89,7 @@ YOUR JOB:
    - If FAILURE: clearly identify what failed and why
    - If SUCCESS: confirm all requirements satisfied
 
-7. Return ONLY this JSON (no other text):
+8. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "status": "success" OR "failure",
@@ -96,7 +122,6 @@ YOUR JOB:
         console.log(`   🎉 Task complete! Creating Released node...`);
       }
       childData = this.createChildNodeData(
-        markdown, 
         result.confidenceBefore!, 
         result.confidenceAfter!
       );
@@ -112,9 +137,10 @@ YOUR JOB:
         parentNodeId: this.id,
         fromStage: 'Validate',
         toStage: 'Plan',  // Back to planning!
-        content: markdown,  // Validation failure report becomes plan input
+        content: '',  // Empty content, child will populate when processing
         confidenceBefore: result.confidenceBefore!,
         confidenceAfter: result.confidenceAfter!,
+        claimable: this.isStageClaimable('Plan'),
         createdAt: new Date(),
         processedAt: null
       };

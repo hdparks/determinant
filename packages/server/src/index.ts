@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { networkInterfaces } from 'os';
 import { initDb, closeDb } from './db.js';
 import api from './api.js';
 import { getEventBus } from './events.js';
@@ -107,11 +108,22 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
+    // Get network interfaces
+    const nets = networkInterfaces();
+    const addresses = Object.values(nets)
+      .flat()
+      .filter(net => net && net.family === 'IPv4' && !net.internal)
+      .map(net => net!.address);
+    
     console.log(`Determinant server running on port ${PORT}`);
     console.log(`Mode: ${isDev ? 'development' : 'production'}`);
     if (isDev) {
-      console.log(`Web UI: http://localhost:${PORT}`);
+      console.log(`\nLocal:   http://localhost:${PORT}`);
+      addresses.forEach(addr => {
+        console.log(`Network: http://${addr}:${PORT}`);
+      });
+      console.log(''); // Empty line for readability
     }
     
     initDb(DB_PATH);

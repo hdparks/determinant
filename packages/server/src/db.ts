@@ -16,7 +16,7 @@ export function initDb(path: string = './determinant.db'): Database.Database {
       vibe TEXT NOT NULL,
       pins TEXT DEFAULT '[]',
       hints TEXT DEFAULT '[]',
-      state TEXT NOT NULL CHECK(state IN ('Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released')),
+      state TEXT NOT NULL CHECK(state IN ('Proposal', 'Questions', 'QuestionsApproval', 'Research', 'Design', 'DesignApproval', 'Plan', 'Implement', 'Validate', 'Released')),
       priority INTEGER DEFAULT 3 CHECK(priority >= 1 AND priority <= 5),
       manual_weight INTEGER DEFAULT 0,
       working_dir TEXT,
@@ -28,11 +28,12 @@ export function initDb(path: string = './determinant.db'): Database.Database {
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       parent_node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
-      from_stage TEXT CHECK(from_stage IS NULL OR from_stage IN ('Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released')),
-      to_stage TEXT NOT NULL CHECK(to_stage IN ('Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released')),
+      from_stage TEXT CHECK(from_stage IS NULL OR from_stage IN ('Proposal', 'Questions', 'QuestionsApproval', 'Research', 'Design', 'DesignApproval', 'Plan', 'Implement', 'Validate', 'Released')),
+      to_stage TEXT NOT NULL CHECK(to_stage IN ('Proposal', 'Questions', 'QuestionsApproval', 'Research', 'Design', 'DesignApproval', 'Plan', 'Implement', 'Validate', 'Released')),
       content TEXT DEFAULT '',
       confidence_before INTEGER CHECK(confidence_before >= 1 AND confidence_before <= 10),
       confidence_after INTEGER CHECK(confidence_after >= 1 AND confidence_after <= 10),
+      claimable INTEGER DEFAULT 1 NOT NULL,
       created_at TEXT NOT NULL,
       processed_at TEXT
     );
@@ -73,6 +74,26 @@ export function initDb(path: string = './determinant.db'): Database.Database {
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_depends_on 
       ON tasks(depends_on_task_id)
+    `);
+  }
+
+  // Migration: Add claimable column if it doesn't exist
+  const hasClaimable = db.prepare(`
+    SELECT COUNT(*) as count 
+    FROM pragma_table_info('nodes') 
+    WHERE name = 'claimable'
+  `).get() as { count: number };
+
+  if (hasClaimable.count === 0) {
+    db.exec(`
+      ALTER TABLE nodes 
+      ADD COLUMN claimable INTEGER DEFAULT 1 NOT NULL
+    `);
+    
+    // Create index for performance (for filtering agent queue)
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_nodes_claimable 
+      ON nodes(claimable)
     `);
   }
 

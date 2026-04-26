@@ -34,6 +34,7 @@ export abstract class Node implements NodeInterface {
   public content: string;
   public confidenceBefore: number | null;
   public confidenceAfter: number | null;
+  public readonly claimable: boolean;
   public readonly createdAt: Date;
   public readonly processedAt: Date | null;
   
@@ -50,6 +51,7 @@ export abstract class Node implements NodeInterface {
     this.content = data.content;
     this.confidenceBefore = data.confidenceBefore;
     this.confidenceAfter = data.confidenceAfter;
+    this.claimable = data.claimable;
     // Ensure dates are Date objects (API returns ISO strings)
     this.createdAt = data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt);
     this.processedAt = data.processedAt ? (data.processedAt instanceof Date ? data.processedAt : new Date(data.processedAt)) : null;
@@ -78,9 +80,21 @@ export abstract class Node implements NodeInterface {
         const { QuestionsNode } = await import('./QuestionsNode.js');
         return new QuestionsNode(data, client, config);
       }
+      case 'QuestionsApproval': {
+        const { QuestionsApprovalNode } = await import('./QuestionsApprovalNode.js');
+        return new QuestionsApprovalNode(data, client, config);
+      }
       case 'Research': {
         const { ResearchNode } = await import('./ResearchNode.js');
         return new ResearchNode(data, client, config);
+      }
+      case 'Design': {
+        const { DesignNode } = await import('./DesignNode.js');
+        return new DesignNode(data, client, config);
+      }
+      case 'DesignApproval': {
+        const { DesignApprovalNode } = await import('./DesignApprovalNode.js');
+        return new DesignApprovalNode(data, client, config);
       }
       case 'Plan': {
         const { PlanNode } = await import('./PlanNode.js');
@@ -134,6 +148,7 @@ export abstract class Node implements NodeInterface {
         content: this.content,
         confidenceBefore: this.confidenceBefore,
         confidenceAfter: this.confidenceAfter,
+        claimable: this.claimable,
         processedAt: this.processedAt
       });
       // Update with server-generated values
@@ -393,6 +408,71 @@ export abstract class Node implements NodeInterface {
   }
   
   /**
+   * Protected helper - gets artifact file path for an ancestor node by stage
+   * 
+   * @param stage - The ancestor stage to get artifact path for
+   * @returns Absolute path to ancestor's stage-based artifact file
+   */
+  protected getAncestorArtifactPath(stage: TaskState): string {
+    if (!this.config.workingDir) {
+      throw new Error('workingDir is not configured');
+    }
+    if (!this.taskId) {
+      throw new Error('taskId is not set');
+    }
+    
+    const stageName = stage.toLowerCase();
+    return join(
+      this.config.workingDir,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      `${stageName}.md`
+    );
+  }
+  
+  /**
+   * Protected helper - reads artifact content from an ancestor node by stage
+   * 
+   * Attempts to read from artifact file first (fast path), falls back to
+   * database content if file is missing (resilience for deleted/moved files).
+   * 
+   * @param stage - The ancestor stage to read artifact from
+   * @returns Content of the ancestor's artifact
+   * @throws Error if neither artifact file nor database content is available
+   */
+  protected async getAncestorArtifactContent(stage: TaskState): Promise<string> {
+    const artifactPath = this.getAncestorArtifactPath(stage);
+    
+    // Try reading from artifact file first (fast path)
+    try {
+      return await readFile(artifactPath, 'utf-8');
+    } catch (error) {
+      // Fallback: fetch from database
+      if (this.config.verbose) {
+        console.log(`   ⚠️  Artifact file not found at ${artifactPath}, falling back to database content`);
+      }
+      
+      const ancestor = await this.getAncestorByStage(stage);
+      if (!ancestor) {
+        throw new Error(
+          `Could not find ancestor node with stage: ${stage}. ` +
+          `Current node: ${this.id} (${this.toStage}), parent: ${this.parentNodeId || 'none'}`
+        );
+      }
+      
+      if (!ancestor.content || ancestor.content.trim() === '') {
+        throw new Error(
+          `Artifact not found at ${artifactPath} and ancestor ${stage} database content is empty. ` +
+          `Current node: ${this.id} (${this.toStage})`
+        );
+      }
+      
+      return ancestor.content;
+    }
+  }
+  
+  /**
    * Protected helper - determines next stage in progression
    */
   protected getNextStage(): TaskState | null {
@@ -404,9 +484,19 @@ export abstract class Node implements NodeInterface {
   }
   
   /**
-   * Protected helper - creates child node data structure
+   * Protected helper - determines if a stage is claimable by agents
    */
-  protected createChildNodeData(content: string, confidenceBefore: number, confidenceAfter: number): NodeInterface {
+  protected isStageClaimable(stage: TaskState): boolean {
+    return stage !== 'QuestionsApproval' && stage !== 'DesignApproval';
+  }
+  
+  /**
+   * Protected helper - creates child node data structure
+   * 
+   * Note: Child nodes are created with empty content. When the child node
+   * processes, it will populate its own content from its artifact file.
+   */
+  protected createChildNodeData(confidenceBefore: number, confidenceAfter: number): NodeInterface {
     const nextStage = this.getNextStage();
     if (!nextStage) {
       throw new Error(`Cannot create child node from final stage: ${this.toStage}`);
@@ -418,9 +508,10 @@ export abstract class Node implements NodeInterface {
       parentNodeId: this.id,
       fromStage: this.toStage,
       toStage: nextStage,
-      content,
+      content: '',
       confidenceBefore,
       confidenceAfter,
+      claimable: this.isStageClaimable(nextStage),
       createdAt: new Date(),
       processedAt: null
     };

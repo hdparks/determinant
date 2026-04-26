@@ -1,6 +1,7 @@
 import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 /**
  * PlanNode creates implementation plans from research or repair plans from validation failures.
@@ -25,33 +26,52 @@ export class PlanNode extends Node {
     let prompt: string;
     
     if (isRepairPlan) {
-      // This is a repair plan - content is validation failure report
-      const proposalContent = await this.getAncestorContent('Proposal');
+      // This is a repair plan
+      const proposalArtifactPath = join(
+        this.config.workingDir!,
+        '.determinant',
+        'artifacts',
+        this.taskId,
+        'proposal.md'
+      );
+      
+      const validateArtifactPath = join(
+        this.config.workingDir!,
+        '.determinant',
+        'artifacts',
+        this.taskId,
+        'validate.md'
+      );
+      
       prompt = `
 You are creating a repair plan to fix validation failures.
 
-ORIGINAL PROPOSAL:
-${proposalContent}
+ORIGINAL PROPOSAL ARTIFACT:
+Path: ${proposalArtifactPath}
+Purpose: Contains the original task description including the vibe (what to build), pins (requirements that must be honored), and hints (guidance from the user).
 
-VALIDATION FAILURE REPORT:
-${this.content}
+VALIDATION FAILURE ARTIFACT:
+Path: ${validateArtifactPath}
+Purpose: Contains validation test results showing which requirements failed, including test outputs and specific failure reasons.
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read both artifacts to understand the original requirements and what failed during validation.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing repair plan and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new repair plan from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    Build the repair plan incrementally, addressing each failure as you analyze it.
 
-3. The plan should:
+4. The plan should:
    - Address each failure identified in the validation report
    - Explain what went wrong and why
    - Provide specific fixes for each issue
    - Include verification steps to confirm the fixes work
    
-4. Return ONLY this JSON (no other text):
+5. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10>,
@@ -59,67 +79,76 @@ YOUR JOB:
 }
       `.trim();
     } else {
-      // Initial plan - get proposal and research
-      const proposalNode = await this.getAncestorByStage('Proposal');
-      const researchNode = await this.getAncestorByStage('Research');
-
-      if (!proposalNode || !researchNode) {
-        throw new Error('Plan requires both Proposal and Research ancestors');
-      }
-
-      // Always get full proposal content (it's typically shorter)
-      const proposalContent = await this.getAncestorContent('Proposal');
-
-      // Link to research with summary for token efficiency
-      const researchLink = await this.createArtifactLink(researchNode, true);
-      const researchSummary = this.extractSummary(researchNode.content, 50);
+      // Initial plan
+      const proposalArtifactPath = join(
+        this.config.workingDir!,
+        '.determinant',
+        'artifacts',
+        this.taskId,
+        'proposal.md'
+      );
+      
+      const researchArtifactPath = join(
+        this.config.workingDir!,
+        '.determinant',
+        'artifacts',
+        this.taskId,
+        'research.md'
+      );
+      
+      const designArtifactPath = join(
+        this.config.workingDir!,
+        '.determinant',
+        'artifacts',
+        this.taskId,
+        'design.md'
+      );
 
       prompt = `
 You are creating a comprehensive implementation plan.
 
-PROPOSAL:
-${proposalContent}
+PROPOSAL ARTIFACT:
+Path: ${proposalArtifactPath}
+Purpose: Contains the original task description including the vibe (what to build), pins (requirements that must be honored), and hints (guidance from the user).
 
-RESEARCH SUMMARY:
-${researchSummary}
+RESEARCH ARTIFACT:
+Path: ${researchArtifactPath}
+Purpose: Contains answers to questions about the codebase, existing patterns, and technical constraints discovered during research, combining both human-provided answers and agent research findings.
 
-Full research document: ${researchLink}
-
----
+APPROVED DESIGN ARTIFACT:
+Path: ${designArtifactPath}
+Purpose: Contains the technical design document including architecture, component breakdown, technical decisions, data models, API designs, and security considerations. This design has been reviewed and approved by a human.
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read all three artifacts to understand the full context for implementation.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing plan and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new plan from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    Build the plan incrementally - start with an overview, then add details for each step.
 
-3. Create a detailed, step-by-step implementation plan that:
+4. Create a detailed, step-by-step implementation plan that:
+   - Follows the APPROVED TECHNICAL DESIGN above (this is mandatory)
    - Breaks down the proposal into concrete, actionable tasks
    - Specifies exact file paths that need to be created or modified
    - Includes code patterns and examples from the research
    - Lists any dependencies that need to be added or updated
    - Provides verification steps for each major task
 
-4. The plan should be specific enough that a developer could follow it without needing to ask clarifying questions.
+5. The plan should be specific enough that a developer could follow it without needing to ask clarifying questions.
 
-5. IMPORTANT: Since the full research document is available via the link above, you should reference specific sections when needed rather than duplicating large amounts of research content.
+6. IMPORTANT: The approved design has been reviewed and approved by a human. Your implementation plan MUST align with it. Do not deviate from the design's architectural decisions.
 
-6. Return ONLY this JSON (no other text):
+7. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10>,
   "confidenceAfter": <1-10>
 }
       `.trim();
-      
-      // Log statistics
-      if (this.config.verbose) {
-        const tokenEstimate = Math.ceil(prompt.length / 4);
-        console.log(`📊 Plan prompt stats: ~${tokenEstimate.toLocaleString()} tokens`);
-      }
     }
     
     const result = await this.generateContent(prompt);
@@ -132,7 +161,7 @@ YOUR JOB:
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
-    const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
+    const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
     return { childNode, artifactPath: result.filePath };

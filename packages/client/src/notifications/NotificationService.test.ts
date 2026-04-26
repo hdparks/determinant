@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { NotificationService } from './NotificationService.js';
 import { DEFAULT_NOTIFICATION_CONFIG } from './types.js';
 

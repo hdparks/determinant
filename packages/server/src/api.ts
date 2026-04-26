@@ -522,6 +522,7 @@ router.post('/nodes/:parentId/complete', async (req: Request, res: Response) => 
 
 router.get('/queue', (req: Request, res: Response) => {
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+  const claimableOnly = req.query.claimableOnly !== 'false'; // Default to true
 
   if (limit !== undefined && (isNaN(limit) || limit < 1)) {
     res.status(400).json({ error: 'Invalid limit parameter' });
@@ -529,9 +530,27 @@ router.get('/queue', (req: Request, res: Response) => {
   }
 
   const heap = getHeap();
-  const items = heap.getQueue(limit);
+  const items = heap.getQueue(limit, claimableOnly);
 
   res.json({ items });
+});
+
+// Human queue - only shows non-claimable nodes (human checkpoints)
+router.get('/queue/human', (req: Request, res: Response) => {
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+
+  if (limit !== undefined && (isNaN(limit) || limit < 1)) {
+    res.status(400).json({ error: 'Invalid limit parameter' });
+    return;
+  }
+
+  const heap = getHeap();
+  const items = heap.getQueue(limit, false); // claimableOnly = false shows all
+  
+  // Filter to only non-claimable items
+  const humanItems = items.filter(item => !item.node.claimable);
+
+  res.json({ items: humanItems });
 });
 
 router.get('/heap-config', (req: Request, res: Response) => {

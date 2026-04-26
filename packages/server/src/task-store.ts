@@ -3,6 +3,14 @@ import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 import { getEventBus } from './events.js';
 
 /**
+ * Determines if a node at a given stage can be claimed by agent workers.
+ * Human checkpoint nodes (QuestionsApproval, DesignApproval) cannot be claimed by agents.
+ */
+function isStageClaimable(stage: TaskState): boolean {
+  return stage !== 'QuestionsApproval' && stage !== 'DesignApproval';
+}
+
+/**
  * Check if setting a dependency would create a circular reference
  * Uses iterative traversal (more efficient than recursive for shallow graphs)
  * 
@@ -280,7 +288,7 @@ export function calculateTaskScore(task: Task): number | null {
            from_stage as fromStage, to_stage as toStage,
            content, confidence_before as confidenceBefore, 
            confidence_after as confidenceAfter,
-           created_at as createdAt, processed_at as processedAt
+           claimable, created_at as createdAt, processed_at as processedAt
     FROM nodes 
     WHERE task_id = ? AND processed_at IS NULL
     ORDER BY created_at DESC
@@ -291,6 +299,7 @@ export function calculateTaskScore(task: Task): number | null {
     // Convert to Node object
     const nodeObj: Node = {
       ...node,
+      claimable: node.claimable === 1,
       createdAt: new Date(node.createdAt),
       processedAt: node.processedAt ? new Date(node.processedAt) : null,
     };
@@ -440,13 +449,14 @@ export async function createNode(
   const db = getDb();
   const id = newId();
   const now = new Date().toISOString();
+  const claimable = isStageClaimable(toStage);
 
-  // Atomic operation: Insert node + update task state
+  // Atomic transaction: Create node and update task state
   const createNodeAtomic = createTransaction(() => {
     db.prepare(`
-      INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, created_at, processed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-    `).run(id, taskId, parentNodeId, fromStage, toStage, content, confidenceBefore, confidenceAfter, now);
+      INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, claimable, created_at, processed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `).run(id, taskId, parentNodeId, fromStage, toStage, content, confidenceBefore, confidenceAfter, claimable ? 1 : 0, now);
 
     db.prepare(`
       UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?
@@ -465,6 +475,7 @@ export async function createNode(
     content,
     confidenceBefore,
     confidenceAfter,
+    claimable,
     createdAt: new Date(now),
     processedAt: null,
   };
@@ -493,7 +504,7 @@ export function getNode(id: string): Node | null {
   const row = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
            content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
-           created_at as createdAt, processed_at as processedAt
+           claimable, created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE id = ?
   `).get(id) as any;
 
@@ -501,6 +512,7 @@ export function getNode(id: string): Node | null {
 
   return {
     ...row,
+    claimable: row.claimable === 1,
     createdAt: new Date(row.createdAt),
     processedAt: row.processedAt ? new Date(row.processedAt) : null,
   };
@@ -511,13 +523,14 @@ export function getNodesByTask(taskId: string): Node[] {
   const rows = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
            content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
-           created_at as createdAt, processed_at as processedAt
+           claimable, created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ?
     ORDER BY created_at ASC
   `).all(taskId) as any[];
 
   return rows.map(row => ({
     ...row,
+    claimable: row.claimable === 1,
     createdAt: new Date(row.createdAt),
     processedAt: row.processedAt ? new Date(row.processedAt) : null,
   }));
@@ -528,7 +541,7 @@ export function getLatestNode(taskId: string): Node | null {
   const row = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
            content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
-           created_at as createdAt, processed_at as processedAt
+           claimable, created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ?
     ORDER BY created_at DESC
     LIMIT 1
@@ -538,6 +551,7 @@ export function getLatestNode(taskId: string): Node | null {
 
   return {
     ...row,
+    claimable: row.claimable === 1,
     createdAt: new Date(row.createdAt),
     processedAt: row.processedAt ? new Date(row.processedAt) : null,
   };
@@ -548,13 +562,14 @@ export function getNodesByStage(taskId: string, stage: TaskState): Node[] {
   const rows = db.prepare(`
     SELECT id, task_id as taskId, parent_node_id as parentNodeId, from_stage as fromStage, to_stage as toStage,
            content, confidence_before as confidenceBefore, confidence_after as confidenceAfter, 
-           created_at as createdAt, processed_at as processedAt
+           claimable, created_at as createdAt, processed_at as processedAt
     FROM nodes WHERE task_id = ? AND to_stage = ?
     ORDER BY created_at ASC
   `).all(taskId, stage) as any[];
 
   return rows.map(row => ({
     ...row,
+    claimable: row.claimable === 1,
     createdAt: new Date(row.createdAt),
     processedAt: row.processedAt ? new Date(row.processedAt) : null,
   }));
@@ -661,13 +676,14 @@ export async function completeNodeProcessing(
 
   const childId = newId();
   const now = new Date().toISOString();
+  const claimable = isStageClaimable(childNodeData.toStage);
 
   // Atomic operation: Create child node + mark parent as processed + update task state
   const completeProcessingAtomic = createTransaction(() => {
     // 1. Insert child node
     db.prepare(`
-      INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, created_at, processed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+      INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, claimable, created_at, processed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
     `).run(
       childId,
       parentNode.taskId,
@@ -677,6 +693,7 @@ export async function completeNodeProcessing(
       childNodeData.content,
       childNodeData.confidenceBefore ?? null,
       childNodeData.confidenceAfter ?? null,
+      claimable ? 1 : 0,
       now
     );
 
@@ -704,6 +721,7 @@ export async function completeNodeProcessing(
     content: childNodeData.content,
     confidenceBefore: childNodeData.confidenceBefore ?? null,
     confidenceAfter: childNodeData.confidenceAfter ?? null,
+    claimable,
     createdAt: new Date(now),
     processedAt: null,
   };

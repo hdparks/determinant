@@ -1,6 +1,7 @@
 import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 /**
  * QuestionsNode generates research questions from a proposal.
@@ -20,22 +21,33 @@ export class QuestionsNode extends Node {
     
     const artifactPath = this.getStageArtifactPath();
     
+    const proposalArtifactPath = join(
+      this.config.workingDir!,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      'proposal.md'
+    );
+    
     const prompt = `
 You are analyzing a proposal to identify knowledge gaps that need research.
 
-PROPOSAL:
-${this.content}
+PROPOSAL ARTIFACT:
+Path: ${proposalArtifactPath}
+Purpose: Contains the original task description including the vibe (what to build), pins (requirements that must be honored), and hints (guidance from the user).
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read the proposal artifact to understand the task requirements.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing questions and ADD to them - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new questions document from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    Add questions as you identify knowledge gaps, building the document incrementally.
 
-3. The questions should cover:
+4. The questions should cover:
    - What parts of the codebase are relevant?
    - What existing patterns or conventions should be followed?
    - What technical decisions need to be made?
@@ -43,8 +55,8 @@ YOUR JOB:
    - What edge cases or error scenarios should be considered?
    - What testing strategies are appropriate?
 
-4. Format the questions in markdown with clear sections
-5. Return ONLY this JSON (no other text):
+5. Format the questions in markdown with clear sections
+6. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 how confident you are in your current understanding>,
@@ -62,7 +74,7 @@ YOUR JOB:
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
-    const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
+    const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
     if (this.config.verbose) {

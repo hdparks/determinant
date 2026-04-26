@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Node } from './Node.js';
 import { DeterminantClient } from '../client/index.js';
 import { OpenCodeConfig } from './types.js';
@@ -30,9 +30,9 @@ describe('Node Linking Helpers', () => {
 
     // Mock client
     mockClient = {
-      getNode: jest.fn(),
-      createNode: jest.fn(),
-      updateNode: jest.fn(),
+      getNode: vi.fn(),
+      createNode: vi.fn(),
+      updateNode: vi.fn(),
     };
 
     config = {
@@ -48,6 +48,7 @@ describe('Node Linking Helpers', () => {
       content: '# Test Content',
       confidenceBefore: null,
       confidenceAfter: null,
+      claimable: true,
       createdAt: new Date(),
       processedAt: new Date(),
     };

@@ -31,8 +31,11 @@ export class PriorityHeap {
     return score;
   }
 
-  getQueue(limit?: number): QueueItem[] {
+  getQueue(limit?: number, claimableOnly: boolean = true): QueueItem[] {
     const db = getDb();
+    
+    // Build WHERE clause dynamically based on claimableOnly
+    const claimableFilter = claimableOnly ? 'AND n.claimable = 1' : '';
     
     // Fetch all unprocessed nodes with their parent tasks
     const rows = db.prepare(`
@@ -45,6 +48,7 @@ export class PriorityHeap {
         n.content,
         n.confidence_before as confidenceBefore,
         n.confidence_after as confidenceAfter,
+        n.claimable,
         n.created_at as nodeCreatedAt,
         n.processed_at as processedAt,
         t.id as taskIdFull,
@@ -63,6 +67,7 @@ export class PriorityHeap {
       LEFT JOIN tasks parent_task ON t.depends_on_task_id = parent_task.id
       WHERE t.state != 'Released'
         AND n.processed_at IS NULL
+        ${claimableFilter}
         AND (
           t.depends_on_task_id IS NULL 
           OR parent_task.state = 'Released'
@@ -81,6 +86,7 @@ export class PriorityHeap {
         content: row.content,
         confidenceBefore: row.confidenceBefore,
         confidenceAfter: row.confidenceAfter,
+        claimable: row.claimable === 1,
         createdAt: new Date(row.nodeCreatedAt),
         processedAt: row.processedAt ? new Date(row.processedAt) : null,
       };

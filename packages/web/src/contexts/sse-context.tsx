@@ -11,7 +11,10 @@ interface SSEContextValue {
 
 const SSEContext = createContext<SSEContextValue | null>(null);
 
-const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 'http://localhost:10110';
+const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 
+  (import.meta.env.DEV && typeof window !== 'undefined' 
+    ? window.location.origin 
+    : 'http://localhost:10110');
 const API_KEY = import.meta.env.VITE_DETERMINANT_API_KEY;
 
 export function SSEProvider({ children }: { children: React.ReactNode }) {

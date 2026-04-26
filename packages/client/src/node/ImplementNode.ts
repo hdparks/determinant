@@ -1,6 +1,7 @@
 import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 /**
  * ImplementNode executes the implementation plan and creates detailed notes.
@@ -21,31 +22,42 @@ export class ImplementNode extends Node {
     
     const artifactPath = this.getStageArtifactPath();
     
+    const planArtifactPath = join(
+      this.config.workingDir!,
+      '.determinant',
+      'artifacts',
+      this.taskId,
+      'plan.md'
+    );
+    
     const prompt = `
 You are implementing a development plan.
 
-PLAN:
-${this.content}
+IMPLEMENTATION PLAN ARTIFACT:
+Path: ${planArtifactPath}
+Purpose: Contains the step-by-step implementation plan with concrete tasks, file paths to modify, code patterns, dependencies to add, and verification steps.
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read the implementation plan to understand all the tasks that need to be completed.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing implementation notes and ADD to them - preserve all previous content
    - IF IT DOESN'T EXIST: Start implementing from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    Update your implementation notes after completing each file or major task.
 
-3. Execute each step in the plan
-4. Create detailed implementation notes at: ${artifactPath}
-5. The implementation notes should include:
+4. Execute each step in the plan
+5. Create detailed implementation notes at: ${artifactPath}
+6. The implementation notes should include:
    - What was implemented
    - Code changes made (specific files and changes)
    - Any deviations from the plan and why
    - Issues encountered and how they were resolved
    - Current state of the implementation
 
-6. Return ONLY this JSON (no other text):
+7. Return ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 confidence before implementation>,
@@ -63,7 +75,7 @@ YOUR JOB:
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
-    const childData = this.createChildNodeData(markdown, result.confidenceBefore!, result.confidenceAfter!);
+    const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
     if (this.config.verbose) {

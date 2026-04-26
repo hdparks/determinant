@@ -1,6 +1,27 @@
-export type TaskState = 'Proposal' | 'Questions' | 'Research' | 'Plan' | 'Implement' | 'Validate' | 'Released';
+export type TaskState = 
+  | 'Proposal' 
+  | 'Questions' 
+  | 'QuestionsApproval'  // NEW - Human checkpoint
+  | 'Research' 
+  | 'Design'             // NEW - Agent creates design
+  | 'DesignApproval'     // NEW - Human checkpoint
+  | 'Plan' 
+  | 'Implement' 
+  | 'Validate' 
+  | 'Released';
 
-export const TASK_STATES: TaskState[] = ['Proposal', 'Questions', 'Research', 'Plan', 'Implement', 'Validate', 'Released'];
+export const TASK_STATES: TaskState[] = [
+  'Proposal', 
+  'Questions', 
+  'QuestionsApproval',  // NEW
+  'Research', 
+  'Design',             // NEW
+  'DesignApproval',     // NEW
+  'Plan', 
+  'Implement', 
+  'Validate', 
+  'Released'
+];
 
 export interface Task {
   id: string;
@@ -28,6 +49,7 @@ export interface Node {
   confidenceAfter: number | null;
   createdAt: Date;
   processedAt: Date | null;
+  claimable: boolean;  // NEW - determines if agents can claim this node
 }
 
 export interface TaskWithNodes extends Task {
@@ -158,3 +180,17 @@ export type SSEEvent =
   | NodeUpdatedEvent
   | NodeProcessedEvent
   | QueueUpdatedEvent;
+
+// New types for human approval interactions
+export interface QuestionsApprovalInput {
+  questions: Array<{
+    question: string;
+    decision: 'discard' | 'answer' | 'research';
+    answer?: string;  // Required if decision === 'answer'
+  }>;
+}
+
+export interface DesignApprovalInput {
+  approved: boolean;
+  feedback?: string;  // Required if approved === false
+}

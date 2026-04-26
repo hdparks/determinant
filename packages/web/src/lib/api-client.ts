@@ -12,7 +12,10 @@ import type {
   GetDependencyChainResponse,
 } from '@determinant/types';
 
-const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 'http://localhost:10110';
+const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 
+  (import.meta.env.DEV && typeof window !== 'undefined' 
+    ? window.location.origin 
+    : 'http://localhost:10110');
 const API_KEY = import.meta.env.VITE_DETERMINANT_API_KEY;
 
 class ApiError extends Error {

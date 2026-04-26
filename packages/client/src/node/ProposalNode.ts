@@ -55,7 +55,6 @@ export class ProposalNode extends Node {
     
     // Create child node data with default confidence scores
     const childData = this.createChildNodeData(
-      markdown.trim(),
       5,  // default confidenceBefore
       5   // default confidenceAfter
     );
