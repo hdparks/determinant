@@ -80,9 +80,9 @@ export abstract class Node implements NodeInterface {
         const { QuestionsNode } = await import('./QuestionsNode.js');
         return new QuestionsNode(data, client, config);
       }
-      case 'QuestionsApproval': {
-        const { QuestionsApprovalNode } = await import('./QuestionsApprovalNode.js');
-        return new QuestionsApprovalNode(data, client, config);
+      case 'QuestionAnswers': {
+        const { QuestionAnswersNode } = await import('./QuestionAnswersNode.js');
+        return new QuestionAnswersNode(data, client, config);
       }
       case 'Research': {
         const { ResearchNode } = await import('./ResearchNode.js');
@@ -487,7 +487,7 @@ export abstract class Node implements NodeInterface {
    * Protected helper - determines if a stage is claimable by agents
    */
   protected isStageClaimable(stage: TaskState): boolean {
-    return stage !== 'QuestionsApproval' && stage !== 'DesignApproval';
+    return stage !== 'QuestionAnswers' && stage !== 'DesignApproval';
   }
   
   /**

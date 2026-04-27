@@ -1,13 +1,14 @@
 import { getDb, newId, createTransaction } from './db.js';
 import { Task, TaskState, Node, TASK_STATES } from '@determinant/types';
 import { getEventBus } from './events.js';
+import { getHeap } from './heap.js';
 
 /**
  * Determines if a node at a given stage can be claimed by agent workers.
- * Human checkpoint nodes (QuestionsApproval, DesignApproval) cannot be claimed by agents.
+ * Human checkpoint nodes (QuestionAnswers, DesignApproval) cannot be claimed by agents.
  */
 function isStageClaimable(stage: TaskState): boolean {
-  return stage !== 'QuestionsApproval' && stage !== 'DesignApproval';
+  return stage !== 'QuestionAnswers' && stage !== 'DesignApproval';
 }
 
 /**
@@ -304,14 +305,12 @@ export function calculateTaskScore(task: Task): number | null {
       processedAt: node.processedAt ? new Date(node.processedAt) : null,
     };
     
-    // Use heap's calculation method - import dynamically to avoid circular dependency
-    const { getHeap } = require('./heap.js');
+    // Use heap's calculation method
     return getHeap().calculateScore(nodeObj);
   }
   
   // Fallback: calculate score without confidence (no unprocessed nodes)
   // This happens when all nodes are processed but task isn't Released
-  const { getHeap } = require('./heap.js');
   const config = getHeap().getConfig();
   return (
     config.priorityWeight * (6 - task.priority) +
@@ -728,6 +727,110 @@ export async function completeNodeProcessing(
 
   const updatedParentNode: Node = {
     ...parentNode,
+    processedAt: new Date(now),
+  };
+
+  // Emit events after successful completion
+  const task = getTask(parentNode.taskId);
+  if (task) {
+    const taskWithScore = {
+      ...task,
+      score: calculateTaskScore(task)
+    };
+    getEventBus().emit('node:created', { task: taskWithScore, node: childNode });
+    getEventBus().emit('node:processed', updatedParentNode);
+    getEventBus().emit('task:updated', taskWithScore);
+    
+    // Queue updated - parent removed, child added
+    const { getHeap } = await import('./heap.js');
+    getEventBus().emit('queue:updated', getHeap().getQueue());
+  }
+
+  return { childNode, parentNode: updatedParentNode };
+}
+
+/**
+ * Process human approval for a node (QuestionAnswers or DesignApproval).
+ * This formats the approval content, creates a child node, and marks parent as processed.
+ */
+export async function processHumanApproval(
+  nodeId: string,
+  approvalContent: string,
+  childToStage: TaskState
+): Promise<{ childNode: Node; parentNode: Node }> {
+  const db = getDb();
+  
+  // Get parent node
+  const parentNode = getNode(nodeId);
+  if (!parentNode) {
+    throw new Error(`Node ${nodeId} not found`);
+  }
+
+  // Verify it's a human checkpoint node
+  if (parentNode.claimable) {
+    throw new Error('This node does not require human approval');
+  }
+
+  const childId = newId();
+  const now = new Date().toISOString();
+  const claimable = isStageClaimable(childToStage);
+
+  // Atomic operation: Update parent content + Create child node + mark parent as processed + update task state
+  const processApprovalAtomic = createTransaction(() => {
+    // 1. Update parent node content with approval
+    db.prepare(`
+      UPDATE nodes SET content = ? WHERE id = ?
+    `).run(approvalContent, nodeId);
+
+    // 2. Insert child node
+    db.prepare(`
+      INSERT INTO nodes (id, task_id, parent_node_id, from_stage, to_stage, content, confidence_before, confidence_after, claimable, created_at, processed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      childId,
+      parentNode.taskId,
+      nodeId,
+      parentNode.toStage,  // Child's fromStage is parent's toStage
+      childToStage,
+      '',  // Child node starts with empty content (will be filled by agent processing)
+      10,  // Human input = high confidence before
+      10,  // Human input = high confidence after
+      claimable ? 1 : 0,
+      now
+    );
+
+    // 3. Update task state to child's stage
+    db.prepare(`
+      UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?
+    `).run(childToStage, now, parentNode.taskId);
+
+    // 4. Mark parent node as processed
+    db.prepare(`
+      UPDATE nodes SET processed_at = ? WHERE id = ?
+    `).run(now, nodeId);
+  });
+
+  // Execute transaction - all operations commit together
+  processApprovalAtomic();
+
+  // Construct result objects
+  const childNode: Node = {
+    id: childId,
+    taskId: parentNode.taskId,
+    parentNodeId: nodeId,
+    fromStage: parentNode.toStage,
+    toStage: childToStage,
+    content: '',
+    confidenceBefore: 10,
+    confidenceAfter: 10,
+    claimable,
+    createdAt: new Date(now),
+    processedAt: null,
+  };
+
+  const updatedParentNode: Node = {
+    ...parentNode,
+    content: approvalContent,
     processedAt: new Date(now),
   };
 

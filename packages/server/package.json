@@ -12,7 +12,12 @@
     "dev": "NODE_ENV=development tsx watch --ignore '../web/node_modules/**' --ignore '../web/dist/**' src/index.ts",
     "start": "NODE_ENV=production node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:migrate": "npx knex migrate:latest --knexfile dist/knexfile.js",
+    "db:migrate:make": "npx knex migrate:make --knexfile src/knexfile.ts -x ts",
+    "db:migrate:rollback": "npx knex migrate:rollback --knexfile dist/knexfile.js",
+    "db:migrate:status": "npx knex migrate:status --knexfile dist/knexfile.js",
+    "db:migrate:list": "npx knex migrate:list --knexfile dist/knexfile.js"
   },
   "keywords": [
     "determinant",
@@ -23,6 +28,7 @@
     "@determinant/types": "file:../types",
     "better-sqlite3": "^11.7.0",
     "express": "^5.0.1",
+    "knex": "^3.2.9",
     "ulidx": "^2.4.1"
   },
   "devDependencies": {

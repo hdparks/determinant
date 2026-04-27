@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { TASK_STATES } from '../index.js';
-import type { TaskState, Node, QuestionsApprovalInput, DesignApprovalInput } from '../index.js';
+import type { TaskState, Node, QuestionAnswersInput, DesignApprovalInput } from '../index.js';
 
 describe('TaskState', () => {
   it('should include all 10 workflow stages', () => {
     expect(TASK_STATES).toHaveLength(10);
   });
 
-  it('should include QuestionsApproval state', () => {
-    expect(TASK_STATES).toContain('QuestionsApproval');
+  it('should include QuestionAnswers state', () => {
+    expect(TASK_STATES).toContain('QuestionAnswers');
   });
 
   it('should include Design state', () => {
@@ -23,7 +23,7 @@ describe('TaskState', () => {
     const expected: TaskState[] = [
       'Proposal',
       'Questions',
-      'QuestionsApproval',
+      'QuestionAnswers',
       'Research',
       'Design',
       'DesignApproval',
@@ -56,20 +56,33 @@ describe('Node interface', () => {
   });
 });
 
-describe('QuestionsApprovalInput', () => {
-  it('should validate decision types', () => {
-    const input: QuestionsApprovalInput = {
-      questions: [
-        { question: 'Q1?', decision: 'discard' },
-        { question: 'Q2?', decision: 'answer', answer: 'A2' },
-        { question: 'Q3?', decision: 'research' },
+describe('QuestionAnswersInput', () => {
+  it('should validate structured answers with custom answers', () => {
+    const input: QuestionAnswersInput = {
+      answers: [
+        { questionNumber: 1, question: 'Q1?', customAnswer: 'Answer 1' },
+        { questionNumber: 2, question: 'Q2?', customAnswer: 'Answer 2' },
+        { questionNumber: 3, question: 'Q3?', selectedOptionId: 'a' },
       ],
     };
     
-    expect(input.questions).toHaveLength(3);
-    expect(input.questions[0].decision).toBe('discard');
-    expect(input.questions[1].decision).toBe('answer');
-    expect(input.questions[2].decision).toBe('research');
+    expect(input.answers).toHaveLength(3);
+    expect(input.answers[0].customAnswer).toBe('Answer 1');
+    expect(input.answers[1].customAnswer).toBe('Answer 2');
+    expect(input.answers[2].selectedOptionId).toBe('a');
+  });
+
+  it('should allow selecting options', () => {
+    const input: QuestionAnswersInput = {
+      answers: [
+        { questionNumber: 1, question: 'Q1?', selectedOptionId: 'a' },
+        { questionNumber: 2, question: 'Q2?', selectedOptionId: 'b' },
+      ],
+    };
+    
+    expect(input.answers).toHaveLength(2);
+    expect(input.answers[0].selectedOptionId).toBe('a');
+    expect(input.answers[1].selectedOptionId).toBe('b');
   });
 });
 

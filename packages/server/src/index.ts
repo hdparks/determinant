@@ -108,7 +108,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     // Get network interfaces
     const nets = networkInterfaces();
     const addresses = Object.values(nets)
@@ -126,7 +126,7 @@ async function startServer() {
       console.log(''); // Empty line for readability
     }
     
-    initDb(DB_PATH);
+    await initDb(DB_PATH);
     
     // Set up SSE event broadcasting
     const eventBus = getEventBus();

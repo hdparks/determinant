@@ -10,6 +10,7 @@ import type {
   TaskFilter,
   GetDependentsResponse,
   GetDependencyChainResponse,
+  QuestionAnswersInput,
 } from '@determinant/types';
 
 const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 
@@ -108,6 +109,18 @@ export const apiClient = {
   // Queue endpoints
   getQueue: (limit = 10) =>
     fetchApi<{ items: QueueItem[] }>(`/api/queue?limit=${limit}`),
+
+  getHumanQueue: (limit?: number) =>
+    fetchApi<{ items: QueueItem[] }>(
+      `/api/queue/human${limit ? `?limit=${limit}` : ''}`
+    ),
+
+  // Node approval endpoints
+  approveQuestions: (nodeId: string, data: QuestionAnswersInput) =>
+    fetchApi<{ node: Node }>(`/api/nodes/${nodeId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export { ApiError };

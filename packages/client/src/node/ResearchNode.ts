@@ -4,29 +4,25 @@ import { readFile } from 'fs/promises';
 
 interface ParsedQuestion {
   question: string;
-  decision: 'discard' | 'answer' | 'research';
-  answer?: string;
+  answer: string;
 }
 
-interface ParsedQuestionsApproval {
-  answered: Array<{ question: string; answer: string }>;
-  toResearch: Array<{ question: string }>;
-  discarded: Array<{ question: string }>;
+interface ParsedQuestionAnswers {
+  questions: Array<ParsedQuestion>;
 }
 
 /**
- * ResearchNode conducts codebase research to answer questions.
+ * ResearchNode conducts codebase research using human answers as guidance.
  * 
- * The agent is instructed to build the research document incrementally,
- * writing findings as they are discovered rather than waiting until all
- * research is complete. This ensures that if the agent is interrupted
- * (timeout, crash), significant progress is preserved and the retry
- * can continue from the partial artifact.
+ * The agent reads human-provided answers from QuestionAnswers and uses them
+ * as starting points for comprehensive codebase exploration. For example:
+ * - If human says "JWT auth", agent finds JWT implementation and reads it
+ * - If human says "unknown", agent investigates autonomously
  * 
- * Reads from QuestionsApproval artifact which contains human decisions:
- * - [DISCARD]: Skip this question
- * - [ANSWERED]: Use human's answer directly
- * - [RESEARCH]: Agent should investigate
+ * The research is built incrementally, writing findings as they are discovered
+ * rather than waiting until all research is complete. This ensures that if the
+ * agent is interrupted (timeout, crash), significant progress is preserved and
+ * the retry can continue from the partial artifact.
  * 
  * Uses stage-based artifact path (.determinant/artifacts/{taskId}/research.md)
  */
@@ -41,33 +37,25 @@ export class ResearchNode extends Node {
     
     const artifactPath = this.getStageArtifactPath();
     
-    // Read QuestionsApproval artifact to extract questions and human decisions
-    const questionsApprovalContent = await this.getAncestorArtifactContent('QuestionsApproval');
-    const parsedQuestions = this.parseQuestionsApproval(questionsApprovalContent);
+    // Read QuestionAnswers artifact to extract questions and human answers
+    const questionAnswersContent = await this.getAncestorArtifactContent('QuestionAnswers');
+    const parsedQuestions = this.parseQuestionAnswers(questionAnswersContent);
     
     if (this.config.verbose) {
-      console.log(`   📋 Questions breakdown:`);
-      console.log(`      ${parsedQuestions.answered.length} answered by human`);
-      console.log(`      ${parsedQuestions.toResearch.length} to research`);
-      console.log(`      ${parsedQuestions.discarded.length} discarded`);
+      console.log(`   📋 ${parsedQuestions.questions.length} questions to research`);
     }
     
-    // Build context sections for the prompt
-    const answeredSection = parsedQuestions.answered.length > 0 
-      ? `\nHUMAN-ANSWERED QUESTIONS (use these answers directly):\n${parsedQuestions.answered.map(q => `\nQ: ${q.question}\nA: ${q.answer}`).join('\n')}\n`
-      : '';
-    
-    const researchSection = parsedQuestions.toResearch.length > 0
-      ? `\nQUESTIONS TO RESEARCH:\n${parsedQuestions.toResearch.map(q => `- ${q.question}`).join('\n')}\n`
-      : '';
-    
-    const discardedNote = parsedQuestions.discarded.length > 0
-      ? `\nNote: ${parsedQuestions.discarded.length} question(s) were marked as not relevant by human reviewer and can be ignored.\n`
-      : '';
+    // Build context for the prompt with all questions and human answers
+    const questionsSection = parsedQuestions.questions.map((q, i) => 
+      `\n${i + 1}. ${q.question}\n   Human answer: ${q.answer}`
+    ).join('\n');
     
     const prompt = `
-You are conducting research to answer questions about a development task.
-${answeredSection}${researchSection}${discardedNote}
+You are conducting research to gather comprehensive context for a development task.
+
+HUMAN-PROVIDED ANSWERS:
+${questionsSection}
+
 YOUR JOB:
 1. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing research and ADD to it - preserve all previous content
@@ -77,19 +65,23 @@ YOUR JOB:
    Don't wait until you've finished all work to write the artifact.
    If the process is interrupted, your incremental updates will be preserved.
 
-3. For HUMAN-ANSWERED questions:
-   - Include their answers in your research document (they're authoritative)
-   - No need to research these further
+3. For each question:
+   - Use the human's answer as a starting point/guidance
+   - If the human provided specific details (like "JWT auth" or "using React"), explore that area of the codebase
+   - If the human wrote "unknown", "not sure", or similar, investigate autonomously
+   - Find relevant files, read implementations, understand patterns
+   - Gather comprehensive context with file paths and code references
+   - Verify the human's answer against actual code where possible
 
-4. For QUESTIONS TO RESEARCH:
-   - Research the codebase thoroughly (use grep, read files, explore patterns)
-   - Apply best practices and solid engineering judgment
-   - Provide clear, actionable answers
-   - Start with the most critical questions first (those blocking implementation)
+4. Create a synthesis that combines:
+   - Human knowledge (high-level guidance)
+   - Agent exploration (deep codebase familiarity, file paths, implementation details)
+   - Code references (actual files and line numbers)
 
 5. The research document should be well-organized with:
-   - Each question followed by its answer (human-provided or researched)
+   - Each question followed by detailed research findings
    - Code examples or file references where relevant
+   - File paths and line numbers for key implementations
    - Recommendations based on findings
 
 6. Finally, respond with ONLY this JSON (no other text):
@@ -121,25 +113,17 @@ YOUR JOB:
   }
   
   /**
-   * Parse QuestionsApproval artifact to extract questions and human decisions
+   * Parse QuestionAnswers artifact to extract questions and human answers
    * 
-   * Format expected:
-   * ## Question text?
-   * **Decision**: [DISCARD] - ...
+   * New simplified format:
+   * ## Question 1: What is the auth mechanism?
+   * **Answer**: JWT tokens stored in localStorage
    * 
-   * ## Another question?
-   * **Decision**: [ANSWERED]
-   * Human's answer here
-   * 
-   * ## Third question?
-   * **Decision**: [RESEARCH] - ...
+   * ## Question 2: How are errors handled?
+   * **Answer**: Using try-catch blocks and toast notifications
    */
-  private parseQuestionsApproval(content: string): ParsedQuestionsApproval {
-    const result: ParsedQuestionsApproval = {
-      answered: [],
-      toResearch: [],
-      discarded: []
-    };
+  private parseQuestionAnswers(content: string): ParsedQuestionAnswers {
+    const questions: ParsedQuestion[] = [];
     
     // Split content by ## headers (questions)
     const sections = content.split(/^## /m).filter(s => s.trim());
@@ -148,28 +132,29 @@ YOUR JOB:
       const lines = section.trim().split('\n');
       if (lines.length === 0) continue;
       
-      const questionText = lines[0].trim();
+      // First line contains the question (may have "Question N: " prefix)
+      const questionLine = lines[0].trim();
+      const questionText = questionLine.replace(/^Question \d+:\s*/, '');
       
-      // Find the decision line
-      const decisionLine = lines.find(l => l.includes('**Decision**:'));
-      if (!decisionLine) continue;
+      // Find the answer line (starts with **Answer**:)
+      const answerLine = lines.find(l => l.trim().startsWith('**Answer**:'));
+      if (!answerLine) continue;
       
-      if (decisionLine.includes('[DISCARD]')) {
-        result.discarded.push({ question: questionText });
-      } else if (decisionLine.includes('[ANSWERED]')) {
-        // Answer is the content after the decision line
-        const decisionIndex = lines.findIndex(l => l.includes('**Decision**:'));
-        const answerLines = lines.slice(decisionIndex + 1).filter(l => l.trim() && !l.startsWith('**'));
-        const answer = answerLines.join('\n').trim();
-        
-        if (answer) {
-          result.answered.push({ question: questionText, answer });
-        }
-      } else if (decisionLine.includes('[RESEARCH]')) {
-        result.toResearch.push({ question: questionText });
+      // Extract answer text (everything after **Answer**: on same line, or subsequent lines)
+      const answerLineIndex = lines.findIndex(l => l.trim().startsWith('**Answer**:'));
+      const answerStart = answerLine.replace(/^\*\*Answer\*\*:\s*/, '').trim();
+      const answerRest = lines.slice(answerLineIndex + 1)
+        .filter(l => l.trim() && !l.startsWith('##') && !l.startsWith('**'))
+        .join('\n')
+        .trim();
+      
+      const answer = answerStart + (answerRest ? '\n' + answerRest : '');
+      
+      if (answer) {
+        questions.push({ question: questionText, answer });
       }
     }
     
-    return result;
+    return { questions };
   }
 }

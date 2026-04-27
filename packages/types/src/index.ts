@@ -1,7 +1,7 @@
 export type TaskState = 
   | 'Proposal' 
   | 'Questions' 
-  | 'QuestionsApproval'  // NEW - Human checkpoint
+  | 'QuestionAnswers'  // NEW - Human checkpoint
   | 'Research' 
   | 'Design'             // NEW - Agent creates design
   | 'DesignApproval'     // NEW - Human checkpoint
@@ -13,7 +13,7 @@ export type TaskState =
 export const TASK_STATES: TaskState[] = [
   'Proposal', 
   'Questions', 
-  'QuestionsApproval',  // NEW
+  'QuestionAnswers',  // NEW
   'Research', 
   'Design',             // NEW
   'DesignApproval',     // NEW
@@ -182,11 +182,43 @@ export type SSEEvent =
   | QueueUpdatedEvent;
 
 // New types for human approval interactions
-export interface QuestionsApprovalInput {
-  questions: Array<{
-    question: string;
-    decision: 'discard' | 'answer' | 'research';
-    answer?: string;  // Required if decision === 'answer'
+
+/**
+ * Represents an option for a question that requires human decision-making
+ */
+export interface QuestionOption {
+  id: string;           // e.g., "a", "b", "c"
+  label: string;        // Short label (e.g., "JWT tokens")
+  description?: string; // Detailed explanation
+  recommended?: boolean; // True if agent recommends this option
+}
+
+/**
+ * Structured question with either a concrete answer (found through exploration)
+ * or options for human decision-making
+ */
+export interface StructuredQuestion {
+  number: number;
+  text: string;
+  // If agent found concrete answer through exploration
+  answer?: string;
+  // If decision needs human input
+  options?: QuestionOption[];
+  // Additional context/reasoning
+  context?: string;
+}
+
+/**
+ * Input for human answering questions
+ * Supports both selecting from agent-provided options and custom answers
+ */
+export interface QuestionAnswersInput {
+  answers: Array<{
+    questionNumber: number;
+    question: string;     // For reference
+    // Selected option ID or custom text (at least one required)
+    selectedOptionId?: string;
+    customAnswer?: string;
   }>;
 }
 

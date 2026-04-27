@@ -43,7 +43,7 @@ Add endpoints for login/logout
 Score: 9/10 - Design is well-specified
 `,
 
-  QuestionsApproval: `# Questions Approval
+  QuestionAnswers: `# Question Answers
 
 **Decision**: [ANSWERED]
 

@@ -18,6 +18,7 @@ import {
   updateNode,
   markNodeProcessed,
   completeNodeProcessing,
+  processHumanApproval,
   detectOrphanedNodes,
   detectDuplicateChildren,
   fixOrphanedNodes,
@@ -27,7 +28,7 @@ import {
   calculateTaskScore,
 } from './task-store.js';
 import { getHeap } from './heap.js';
-import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskManualWeightRequest, UpdateTaskDependencyRequest, UpdateTaskVibeRequest } from '@determinant/types';
+import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskManualWeightRequest, UpdateTaskDependencyRequest, UpdateTaskVibeRequest, QuestionAnswersInput, DesignApprovalInput } from '@determinant/types';
 import { getEventBus } from './events.js';
 import { newId } from './db.js';
 
@@ -489,8 +490,8 @@ router.post('/nodes/:parentId/complete', async (req: Request, res: Response) => 
   const { toStage, content, confidenceBefore, confidenceAfter } = req.body;
 
   // Validate required fields
-  if (!toStage || !content) {
-    res.status(400).json({ error: 'Missing required fields: toStage, content' });
+  if (!toStage) {
+    res.status(400).json({ error: 'Missing required field: toStage' });
     return;
   }
 
@@ -517,6 +518,135 @@ router.post('/nodes/:parentId/complete', async (req: Request, res: Response) => 
     }
     console.error('Error completing node processing:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Process human approval for QuestionAnswers or DesignApproval nodes.
+ * Accepts approval input, formats artifact content, creates child node.
+ */
+router.post('/nodes/:nodeId/approve', async (req: Request, res: Response) => {
+  const nodeId = req.params.nodeId as string;
+  const input = req.body;
+
+  try {
+    // Get the node to determine its type
+    const node = getNode(nodeId);
+    
+    if (!node) {
+      res.status(404).json({ error: 'Node not found' });
+      return;
+    }
+
+    // Verify it's a human checkpoint node
+    if (node.claimable) {
+      res.status(400).json({ 
+        error: 'This node does not require human approval' 
+      });
+      return;
+    }
+
+    // Verify node hasn't been processed yet
+    if (node.processedAt) {
+      res.status(400).json({ 
+        error: 'This node has already been processed' 
+      });
+      return;
+    }
+
+    let approvalContent: string;
+    let childToStage: TaskState;
+
+    // Handle QuestionAnswers
+    if (node.toStage === 'QuestionAnswers') {
+      const questionsInput = input as QuestionAnswersInput;
+      
+      // Validate input
+      if (!questionsInput.answers || !Array.isArray(questionsInput.answers)) {
+        res.status(400).json({ error: 'Invalid input: answers array required' });
+        return;
+      }
+
+      // Validate each answer has either selectedOptionId or customAnswer
+      for (const item of questionsInput.answers) {
+        if (!item.selectedOptionId && !item.customAnswer?.trim()) {
+          res.status(400).json({ 
+            error: `Question ${item.questionNumber} "${item.question}" requires an answer. ` +
+                   'Please select an option or provide a custom answer.'
+          });
+          return;
+        }
+      }
+
+      // Note: Full artifact formatting happens in client's QuestionAnswersNode.processHumanInput
+      // Server just validates and passes through to client
+      approvalContent = '# Question Answers\n\n';
+      approvalContent += 'Human answers to research questions:\n\n';
+
+      for (const item of questionsInput.answers) {
+        approvalContent += `## Question ${item.questionNumber}: ${item.question}\n\n`;
+        
+        if (item.customAnswer) {
+          approvalContent += `**Answer**: ${item.customAnswer}\n\n`;
+        } else if (item.selectedOptionId) {
+          approvalContent += `**Selected Option**: ${item.selectedOptionId}\n\n`;
+        }
+      }
+
+      childToStage = 'Research';
+    } 
+    // Handle DesignApproval
+    else if (node.toStage === 'DesignApproval') {
+      const designInput = input as DesignApprovalInput;
+      
+      // Validate input
+      if (typeof designInput.approved !== 'boolean') {
+        res.status(400).json({ error: 'Invalid input: approved boolean required' });
+        return;
+      }
+
+      if (!designInput.approved && (!designInput.feedback || designInput.feedback.trim() === '')) {
+        res.status(400).json({ 
+          error: 'Feedback is required when design is not approved' 
+        });
+        return;
+      }
+
+      // Format the approval artifact
+      approvalContent = '# Design Approval\n\n';
+      if (designInput.approved) {
+        approvalContent += '**Decision**: APPROVED\n\n';
+        if (designInput.feedback) {
+          approvalContent += `**Notes**: ${designInput.feedback}\n\n`;
+        }
+      } else {
+        approvalContent += '**Decision**: CHANGES REQUESTED\n\n';
+        approvalContent += `**Feedback**: ${designInput.feedback}\n\n`;
+      }
+
+      childToStage = 'Plan';
+    } 
+    else {
+      res.status(400).json({ 
+        error: `Node type ${node.toStage} does not support human approval` 
+      });
+      return;
+    }
+
+    // Process the approval
+    const result = await processHumanApproval(nodeId, approvalContent, childToStage);
+
+    res.json({ node: result.parentNode });
+  } catch (error) {
+    const err = error as Error;
+    if (err.message.includes('not found')) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    console.error('Error processing human approval:', error);
+    res.status(500).json({ 
+      error: err.message || 'Internal server error' 
+    });
   }
 });
 
