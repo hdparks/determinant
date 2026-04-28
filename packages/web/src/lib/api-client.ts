@@ -11,6 +11,7 @@ import type {
   GetDependentsResponse,
   GetDependencyChainResponse,
   QuestionAnswersInput,
+  DesignApprovalInput,
 } from '@determinant/types';
 
 const API_URL = import.meta.env.VITE_DETERMINANT_SERVER_URL || 
@@ -121,6 +122,22 @@ export const apiClient = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  approveDesign: (nodeId: string, data: DesignApprovalInput) =>
+    fetchApi<{ node: Node }>(`/api/nodes/${nodeId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get distinct working directories
+  getWorkDirs: () => 
+    fetchApi<{ workingDirs: string[] }>('/api/work-dirs'),
+
+  // Validate directory path
+  validatePath: (path: string) =>
+    fetchApi<{ exists: boolean; isDirectory: boolean }>(
+      `/api/validate-path?path=${encodeURIComponent(path)}`
+    ),
 };
 
 export { ApiError };

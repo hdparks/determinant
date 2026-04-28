@@ -30,8 +30,11 @@ export type ParsedQuestion = StructuredQuestion;
 export function parseQuestionsArtifact(content: string): ParsedQuestion[] {
   const questions: ParsedQuestion[] = [];
   
+  // Handle case where content might be a Buffer (defensive programming)
+  const contentStr = typeof content === 'string' ? content : String(content);
+  
   // Split by ### headers (questions) and --- separators
-  const questionSections = content.split(/^###\s+Question\s+(\d+)/gm);
+  const questionSections = contentStr.split(/^###\s+Question\s+(\d+)/gm);
   
   // questionSections array looks like: ['', '1', '\nQuestion content\n---\n', '2', '\nAnother question\n---\n', ...]
   // Every odd index is a question number, every even index (after first) is question content

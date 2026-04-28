@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import fs from 'fs';
 import {
   createTask,
   getTask,
@@ -30,7 +31,7 @@ import {
 import { getHeap } from './heap.js';
 import { TaskState, TASK_STATES, CreateTaskRequest, UpdateTaskStateRequest, UpdateTaskPriorityRequest, UpdateTaskManualWeightRequest, UpdateTaskDependencyRequest, UpdateTaskVibeRequest, QuestionAnswersInput, DesignApprovalInput } from '@determinant/types';
 import { getEventBus } from './events.js';
-import { newId } from './db.js';
+import { newId, getDb } from './db.js';
 
 const router = Router();
 
@@ -591,6 +592,11 @@ router.post('/nodes/:nodeId/approve', async (req: Request, res: Response) => {
         } else if (item.selectedOptionId) {
           approvalContent += `**Selected Option**: ${item.selectedOptionId}\n\n`;
         }
+        
+        // Add comments if provided
+        if (item.comments?.trim()) {
+          approvalContent += `**Comments**: ${item.comments.trim()}\n\n`;
+        }
       }
 
       childToStage = 'Research';
@@ -752,6 +758,38 @@ router.post('/cleanup/fix-orphaned-nodes', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fixing orphaned nodes:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get distinct working directories from tasks
+router.get('/work-dirs', (req: Request, res: Response) => {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT working_dir 
+    FROM tasks 
+    WHERE working_dir IS NOT NULL
+    ORDER BY working_dir ASC
+  `).all() as { working_dir: string }[];
+  
+  const workingDirs = rows.map(row => row.working_dir);
+  res.json({ workingDirs });
+});
+
+// Validate directory path (non-blocking check)
+router.get('/validate-path', (req: Request, res: Response) => {
+  const path = req.query.path as string;
+  
+  if (!path) {
+    res.status(400).json({ error: 'path query parameter required' });
+    return;
+  }
+  
+  try {
+    const exists = fs.existsSync(path);
+    const isDirectory = exists && fs.statSync(path).isDirectory();
+    res.json({ exists, isDirectory });
+  } catch (error) {
+    res.json({ exists: false, isDirectory: false });
   }
 });
 

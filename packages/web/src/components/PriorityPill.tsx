@@ -1,11 +1,11 @@
 import { type FC } from 'react';
 
-type Priority = 1 | 2 | 3 | 4 | 5;
+export type Priority = 1 | 2 | 3 | 4 | 5;
 
-interface PriorityConfig {
+export type PriorityConfig = {
   className: string;
   label: string;
-}
+};
 
 interface PriorityPillProps {
   priority: number;
@@ -14,7 +14,7 @@ interface PriorityPillProps {
   className?: string; // Optional additional styling
 }
 
-const PRIORITY_CONFIG: Record<Priority, PriorityConfig> = {
+export const PRIORITY_CONFIG: Record<Priority, PriorityConfig> = {
   1: { className: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200', label: 'Critical' },
   2: { className: 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200', label: 'High' },
   3: { className: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200', label: 'Medium' },

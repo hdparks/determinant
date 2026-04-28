@@ -47,6 +47,17 @@ export class DesignNode extends Node {
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
+    
+    // Save this node's content to database (following ProposalNode pattern)
+    this.content = markdown.trim();
+    this.confidenceBefore = result.confidenceBefore!;
+    this.confidenceAfter = result.confidenceAfter!;
+    await this.save();
+    
+    if (this.config.verbose) {
+      console.log(`   💾 Design content saved to database`);
+    }
+    
     const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
@@ -79,7 +90,7 @@ export class DesignNode extends Node {
     );
     
     return `
-You are creating a technical design document based on research findings.
+You are creating a CONCISE technical design plan based on research findings.
 
 PROPOSAL ARTIFACT:
 Path: ${proposalArtifactPath}
@@ -100,32 +111,36 @@ YOUR JOB:
    Don't wait until you've finished all design work to write the artifact.
    If interrupted, your incremental updates will be preserved.
 
-4. Create a comprehensive technical design that includes:
-   - Overview of the solution
-   - Architecture/component breakdown
-   - Technical decisions and rationale
-   - Data models or schemas (if applicable)
-   - API designs or interfaces
-   - Security considerations
-   - Error handling strategy
-   - Testing approach
-   
+4. Create a CONCISE design plan (target 200-300 tokens) that captures:
+   - High-level solution approach (2-3 sentences)
+   - Key architectural decisions (3-5 bullet points max)
+   - Critical technical choices with brief rationale (3-5 decisions max)
+   - Major risks or constraints (2-3 items max)
+
 5. The design should be:
-   - Clear and actionable (ready for implementation)
-   - Well-organized with proper sections
-   - Justified with reasoning from research
-   - Addressing all key questions from research
+   - Focused on WHAT and WHY, not HOW
+   - Decision-oriented, not implementation-detailed
+   - Concise enough to grasp in under 2 minutes
    - Honoring all pins from the proposal
+   - Justified with key insights from research
 
-6. Write in markdown format with clear headings and structure.
+6. DO NOT include:
+   - Code snippets or line numbers
+   - Exhaustive testing checklists or step-by-step implementation plans
+   - Exact styling specifications (colors, pixels, CSS classes)
+   - Comprehensive documentation of every detail
+   - Sections on topics with obvious/standard approaches
+   - Details that can be determined during implementation
 
-7. Finally, respond with ONLY this JSON (no other text):
+7. Write in markdown format with clear, focused sections.
+
+8. Finally, respond with ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 how confident you were before creating design>,
   "confidenceAfter": <1-10 how confident you are in this design>
 }
-    `.trim();
+     `.trim();
   }
   
   /**
@@ -150,11 +165,11 @@ YOUR JOB:
     );
     
     return `
-You are REVISING a technical design based on human feedback.
+You are REVISING a technical design plan based on human feedback.
 
 ORIGINAL DESIGN ARTIFACT:
 Path: ${originalDesignArtifactPath}
-Purpose: Contains the previous version of the technical design document that received human feedback.
+Purpose: Contains the previous version of the technical design plan that received human feedback.
 
 DESIGN FEEDBACK ARTIFACT:
 Path: ${feedbackArtifactPath}
@@ -169,16 +184,17 @@ YOUR JOB:
    - Address ALL points raised in the feedback
    - Keep the good parts of the original design
    - Improve or add sections based on feedback
-   - Maintain the overall structure and clarity
+   - Maintain CONCISENESS (200-300 tokens target)
 
 4. IMPORTANT: Update the document continuously as you make progress.
    Build incrementally rather than waiting until the end.
 
 5. Make sure the revised design:
    - Fully addresses the human feedback
+   - Remains focused on key decisions (not implementation details)
    - Maintains technical soundness
-   - Is clear and ready for implementation
-   - Has improved quality over the original
+   - Is concise and decision-oriented
+   - Avoids code snippets, exhaustive checklists, and styling minutiae
 
 6. Finally, respond with ONLY this JSON (no other text):
 {
@@ -186,6 +202,6 @@ YOUR JOB:
   "confidenceBefore": <1-10 your confidence before revision (likely lower due to feedback)>,
   "confidenceAfter": <1-10 your confidence after addressing feedback>
 }
-    `.trim();
+     `.trim();
   }
 }

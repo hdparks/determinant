@@ -2,19 +2,10 @@ import { Node } from './Node.js';
 import type { ProcessResult } from './types.js';
 import { readFile } from 'fs/promises';
 
-interface ParsedQuestion {
-  question: string;
-  answer: string;
-}
-
-interface ParsedQuestionAnswers {
-  questions: Array<ParsedQuestion>;
-}
-
 /**
  * ResearchNode conducts codebase research using human answers as guidance.
  * 
- * The agent reads human-provided answers from QuestionAnswers and uses them
+ * The agent reads human-provided answers from QuestionAnswers artifact and uses them
  * as starting points for comprehensive codebase exploration. For example:
  * - If human says "JWT auth", agent finds JWT implementation and reads it
  * - If human says "unknown", agent investigates autonomously
@@ -37,35 +28,28 @@ export class ResearchNode extends Node {
     
     const artifactPath = this.getStageArtifactPath();
     
-    // Read QuestionAnswers artifact to extract questions and human answers
-    const questionAnswersContent = await this.getAncestorArtifactContent('QuestionAnswers');
-    const parsedQuestions = this.parseQuestionAnswers(questionAnswersContent);
-    
-    if (this.config.verbose) {
-      console.log(`   📋 ${parsedQuestions.questions.length} questions to research`);
-    }
-    
-    // Build context for the prompt with all questions and human answers
-    const questionsSection = parsedQuestions.questions.map((q, i) => 
-      `\n${i + 1}. ${q.question}\n   Human answer: ${q.answer}`
-    ).join('\n');
+    // Ensure QuestionAnswers artifact exists (generate from DB if needed)
+    const questionAnswersArtifactPath = await this.ensureAncestorArtifactExists('QuestionAnswers');
     
     const prompt = `
 You are conducting research to gather comprehensive context for a development task.
 
-HUMAN-PROVIDED ANSWERS:
-${questionsSection}
+QUESTION ANSWERS ARTIFACT:
+Path: ${questionAnswersArtifactPath}
+Purpose: Contains questions about the task and human-provided answers. Each question is formatted as a markdown heading with the answer below it.
 
 YOUR JOB:
-1. Check if a file already exists at: ${artifactPath}
+1. Read the QuestionAnswers artifact to understand what questions need research and what guidance the human provided.
+
+2. Check if a file already exists at: ${artifactPath}
    - IF IT EXISTS: Review the existing research and ADD to it - preserve all previous content
    - IF IT DOESN'T EXIST: Create a new research document from scratch
 
-2. IMPORTANT: Update the document continuously as you make progress.
+3. IMPORTANT: Update the document continuously as you make progress.
    Don't wait until you've finished all work to write the artifact.
    If the process is interrupted, your incremental updates will be preserved.
 
-3. For each question:
+4. For each question in the QuestionAnswers artifact:
    - Use the human's answer as a starting point/guidance
    - If the human provided specific details (like "JWT auth" or "using React"), explore that area of the codebase
    - If the human wrote "unknown", "not sure", or similar, investigate autonomously
@@ -73,18 +57,18 @@ YOUR JOB:
    - Gather comprehensive context with file paths and code references
    - Verify the human's answer against actual code where possible
 
-4. Create a synthesis that combines:
+5. Create a synthesis that combines:
    - Human knowledge (high-level guidance)
    - Agent exploration (deep codebase familiarity, file paths, implementation details)
    - Code references (actual files and line numbers)
 
-5. The research document should be well-organized with:
+6. The research document should be well-organized with:
    - Each question followed by detailed research findings
    - Code examples or file references where relevant
    - File paths and line numbers for key implementations
    - Recommendations based on findings
 
-6. Finally, respond with ONLY this JSON (no other text):
+7. Finally, respond with ONLY this JSON (no other text):
 {
   "filePath": "${artifactPath}",
   "confidenceBefore": <1-10 how confident you were before research>,
@@ -102,6 +86,17 @@ YOUR JOB:
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
+    
+    // Save this node's content to database (following ProposalNode pattern)
+    this.content = markdown.trim();
+    this.confidenceBefore = result.confidenceBefore!;
+    this.confidenceAfter = result.confidenceAfter!;
+    await this.save();
+    
+    if (this.config.verbose) {
+      console.log(`   💾 Research content saved to database`);
+    }
+    
     const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
@@ -110,51 +105,5 @@ YOUR JOB:
     }
     
     return { childNode, artifactPath: result.filePath };
-  }
-  
-  /**
-   * Parse QuestionAnswers artifact to extract questions and human answers
-   * 
-   * New simplified format:
-   * ## Question 1: What is the auth mechanism?
-   * **Answer**: JWT tokens stored in localStorage
-   * 
-   * ## Question 2: How are errors handled?
-   * **Answer**: Using try-catch blocks and toast notifications
-   */
-  private parseQuestionAnswers(content: string): ParsedQuestionAnswers {
-    const questions: ParsedQuestion[] = [];
-    
-    // Split content by ## headers (questions)
-    const sections = content.split(/^## /m).filter(s => s.trim());
-    
-    for (const section of sections) {
-      const lines = section.trim().split('\n');
-      if (lines.length === 0) continue;
-      
-      // First line contains the question (may have "Question N: " prefix)
-      const questionLine = lines[0].trim();
-      const questionText = questionLine.replace(/^Question \d+:\s*/, '');
-      
-      // Find the answer line (starts with **Answer**:)
-      const answerLine = lines.find(l => l.trim().startsWith('**Answer**:'));
-      if (!answerLine) continue;
-      
-      // Extract answer text (everything after **Answer**: on same line, or subsequent lines)
-      const answerLineIndex = lines.findIndex(l => l.trim().startsWith('**Answer**:'));
-      const answerStart = answerLine.replace(/^\*\*Answer\*\*:\s*/, '').trim();
-      const answerRest = lines.slice(answerLineIndex + 1)
-        .filter(l => l.trim() && !l.startsWith('##') && !l.startsWith('**'))
-        .join('\n')
-        .trim();
-      
-      const answer = answerStart + (answerRest ? '\n' + answerRest : '');
-      
-      if (answer) {
-        questions.push({ question: questionText, answer });
-      }
-    }
-    
-    return { questions };
   }
 }

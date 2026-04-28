@@ -2,7 +2,7 @@ import { Node as NodeInterface, TaskState, TASK_STATES } from '@determinant/type
 import type { DeterminantClient } from '../client/index.js';
 import type { ProcessResult, AgentResult, OpenCodeConfig } from './types.js';
 import { spawn } from 'child_process';
-import { readFile, mkdir, access, constants } from 'fs/promises';
+import { readFile, mkdir, access, constants, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 /**
@@ -469,6 +469,61 @@ export abstract class Node implements NodeInterface {
       }
       
       return ancestor.content;
+    }
+  }
+  
+  /**
+   * Ensures an ancestor artifact file exists on disk.
+   * 
+   * If the artifact file doesn't exist, this method generates it from the
+   * database content column. This allows nodes to always reference artifact
+   * paths instead of injecting content directly into prompts.
+   * 
+   * @param stage - The ancestor stage whose artifact to ensure exists
+   * @returns Path to the artifact file
+   * @throws Error if neither artifact file nor database content is available
+   */
+  protected async ensureAncestorArtifactExists(stage: TaskState): Promise<string> {
+    const artifactPath = this.getAncestorArtifactPath(stage);
+    
+    // Check if artifact file already exists
+    try {
+      await access(artifactPath, constants.F_OK);
+      // File exists, return path
+      return artifactPath;
+    } catch {
+      // File doesn't exist, generate from database content
+      if (this.config.verbose) {
+        console.log(`   ⚠️  Artifact file not found at ${artifactPath}, generating from database content`);
+      }
+      
+      const ancestor = await this.getAncestorByStage(stage);
+      
+      if (!ancestor) {
+        throw new Error(
+          `Could not find ancestor node with stage: ${stage}. ` +
+          `Current node: ${this.id} (${this.toStage}), parent: ${this.parentNodeId || 'none'}`
+        );
+      }
+      
+      if (!ancestor.content || ancestor.content.trim() === '') {
+        throw new Error(
+          `Cannot generate artifact: no content in database for ${stage}. ` +
+          `Current node: ${this.id} (${this.toStage})`
+        );
+      }
+      
+      // Ensure artifact directory exists
+      await this.ensureArtifactDir();
+      
+      // Write content to artifact file
+      await writeFile(artifactPath, ancestor.content, 'utf-8');
+      
+      if (this.config.verbose) {
+        console.log(`   📝 Generated missing artifact from database: ${artifactPath}`);
+      }
+      
+      return artifactPath;
     }
   }
   

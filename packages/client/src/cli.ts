@@ -449,6 +449,8 @@ States: ${TASK_STATES.join(', ')}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  console.log("got these args:", args)
+  console.log("from these:", process.argv)
 
   const baseUrl = process.env.DETERMINANT_SERVER_URL ?? 'http://localhost:10110';
   const apiKey = process.env.DETERMINANT_API_KEY ?? '';

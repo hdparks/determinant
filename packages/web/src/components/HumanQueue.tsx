@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useHumanQueue } from '../hooks/use-human-queue';
 import { QuestionAnswersModal } from './QuestionAnswersModal';
+import { DesignApprovalModal } from './DesignApprovalModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './feedback/EmptyState';
 import { ErrorBanner } from './feedback/ErrorBanner';
@@ -76,8 +77,16 @@ export function HumanQueue() {
         ))}
       </div>
       
-      {selectedItem && (
+      {selectedItem && selectedItem.node.toStage === 'QuestionAnswers' && (
         <QuestionAnswersModal
+          queueItem={selectedItem}
+          isOpen={true}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
+      
+      {selectedItem && selectedItem.node.toStage === 'DesignApproval' && (
+        <DesignApprovalModal
           queueItem={selectedItem}
           isOpen={true}
           onClose={() => setSelectedItem(null)}

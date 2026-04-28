@@ -15,6 +15,7 @@ interface QuestionAnswersModalProps {
 interface AnswerState {
   selectedOptionId?: string;
   customAnswer?: string;
+  comments?: string;
 }
 
 export function QuestionAnswersModal({ 
@@ -23,7 +24,7 @@ export function QuestionAnswersModal({
   onClose 
 }: QuestionAnswersModalProps) {
   // Fetch full task data to get all nodes
-  const { data: taskData } = useTask(queueItem.task.id);
+  const { data: taskData, isLoading: isLoadingTask, error: taskError } = useTask(queueItem.task.id);
   
   // Find the Questions node (parent of QuestionAnswers node)
   const questionsNode = taskData?.nodes.find(n => 
@@ -65,7 +66,10 @@ export function QuestionAnswersModal({
             questionNumber: q.number,
             question: q.text,
             selectedOptionId: answers[q.number]?.selectedOptionId,
-            customAnswer: answers[q.number]?.customAnswer,
+            // Use user's custom answer if provided, otherwise fall back to agent's answer
+            customAnswer: answers[q.number]?.customAnswer?.trim() || q.answer,
+            // Include comments if provided
+            comments: answers[q.number]?.comments?.trim(),
           })),
         },
       },
@@ -91,9 +95,21 @@ export function QuestionAnswersModal({
             Review Questions - {queueItem.task.vibe}
           </Dialog.Title>
           
-          {questions.length === 0 ? (
+          {taskError ? (
+            <div className="text-sm text-red-600 dark:text-red-400">
+              Error loading questions: {taskError.message}
+            </div>
+          ) : isLoadingTask ? (
             <div className="text-sm text-gray-500 dark:text-gray-400">
               Loading questions...
+            </div>
+          ) : !questionsNode ? (
+            <div className="text-sm text-red-600 dark:text-red-400">
+              Error: Could not find Questions node (parent node ID: {queueItem.node.parentNodeId})
+            </div>
+          ) : questions.length === 0 ? (
+            <div className="text-sm text-yellow-600 dark:text-yellow-400">
+              No questions found in this task.
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
@@ -140,6 +156,7 @@ export function QuestionAnswersModal({
                               onChange={(e) => setAnswers(prev => ({
                                 ...prev,
                                 [question.number]: {
+                                  ...prev[question.number],
                                   selectedOptionId: e.target.value,
                                   customAnswer: undefined,
                                 },
@@ -184,6 +201,7 @@ export function QuestionAnswersModal({
                           onChange={(e) => setAnswers(prev => ({
                             ...prev,
                             [question.number]: {
+                              ...prev[question.number],
                               selectedOptionId: undefined,
                               customAnswer: e.target.value,
                             },
@@ -194,6 +212,26 @@ export function QuestionAnswersModal({
                         />
                       </div>
                     )}
+                    
+                    {/* Comments field - always available for all questions */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                        Comments (optional)
+                      </label>
+                      <textarea
+                        value={answers[question.number]?.comments || ''}
+                        onChange={(e) => setAnswers(prev => ({
+                          ...prev,
+                          [question.number]: {
+                            ...prev[question.number],
+                            comments: e.target.value,
+                          },
+                        }))}
+                        placeholder="Add any additional notes or context..."
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

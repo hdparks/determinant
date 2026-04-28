@@ -219,6 +219,7 @@ export interface QuestionAnswersInput {
     // Selected option ID or custom text (at least one required)
     selectedOptionId?: string;
     customAnswer?: string;
+    comments?: string;    // Optional additional notes/context
   }>;
 }
 

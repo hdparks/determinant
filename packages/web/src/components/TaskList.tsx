@@ -12,6 +12,7 @@ import { ErrorBanner } from './feedback/ErrorBanner';
 import { DependencyStatusIcon } from './dependencies/DependencyStatusIcon';
 import { DependencyBadge } from './dependencies/DependencyBadge';
 import { TaskDetailModal } from './TaskDetailModal';
+import { CreateTaskModal } from './CreateTaskModal';
 import { formatDateTime } from '../lib/date-utils';
 
 interface SortableHeaderProps {
@@ -54,6 +55,7 @@ export function TaskList() {
   const [editError, setEditError] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     field: 'score' | 'createdAt';
     direction: 'asc' | 'desc';
@@ -257,6 +259,13 @@ export function TaskList() {
               <option value="createdAt-asc">Created (Oldest First)</option>
             </select>
           </div>
+          {/* Create Task Button */}
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Create Task
+          </button>
         </div>
       </div>
 
@@ -383,6 +392,12 @@ export function TaskList() {
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         onNavigate={handleTaskNavigate}
+      />
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
       />
     </div>
   );

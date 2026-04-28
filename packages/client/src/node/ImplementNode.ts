@@ -75,6 +75,17 @@ YOUR JOB:
     }
     
     const markdown = await readFile(result.filePath, 'utf-8');
+    
+    // Save this node's content to database (following ProposalNode pattern)
+    this.content = markdown.trim();
+    this.confidenceBefore = result.confidenceBefore!;
+    this.confidenceAfter = result.confidenceAfter!;
+    await this.save();
+    
+    if (this.config.verbose) {
+      console.log(`   💾 Implementation content saved to database`);
+    }
+    
     const childData = this.createChildNodeData(result.confidenceBefore!, result.confidenceAfter!);
     const childNode = await Node.create(childData, this.client, this.config);
     
