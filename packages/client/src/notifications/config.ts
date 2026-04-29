@@ -20,6 +20,13 @@ function getDefaultTTLSound(): string {
 }
 
 /**
+ * Get the default queue empty sound file path
+ */
+function getDefaultQueueEmptySound(): string {
+  return join(__dirname, '../../assets/sounds/queue-empty.aiff');
+}
+
+/**
  * Load notification configuration from environment variables and constructor options
  */
 export function loadNotificationConfig(
@@ -36,7 +43,7 @@ export function loadNotificationConfig(
       task_complete: process.env.DETERMINANT_NOTIFY_SOUND_SUCCESS,
       task_failed: process.env.DETERMINANT_NOTIFY_SOUND_ERROR ?? getDefaultErrorSound(),
       worker_complete: process.env.DETERMINANT_NOTIFY_SOUND_SUCCESS,
-      queue_empty: process.env.DETERMINANT_NOTIFY_SOUND_WARNING,
+      queue_empty: process.env.DETERMINANT_NOTIFY_SOUND_WARNING ?? getDefaultQueueEmptySound(),
       ttl_expired: process.env.DETERMINANT_NOTIFY_SOUND_TTL_EXPIRED ?? getDefaultTTLSound(),
     },
   };

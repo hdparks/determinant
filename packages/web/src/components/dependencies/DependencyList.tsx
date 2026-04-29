@@ -18,11 +18,15 @@ export function DependencyList({ parent, dependents, onNavigate }: DependencyLis
       {parent && (
         <div className="flex items-center gap-2">
           <DependencyBadge 
-            type="blocked" 
+            type={parent.state === 'Released' ? 'unlocked' : 'blocked'}
             task={parent}
             onClick={onNavigate ? () => onNavigate(parent.id) : undefined}
           />
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className={`text-xs ${
+            parent.state === 'Released'
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-gray-500 dark:text-gray-400'
+          }`}>
             State: {parent.state}
           </span>
         </div>

@@ -101,10 +101,14 @@ export function TaskList() {
       <div className="flex items-center gap-2">
         <DependencyStatusIcon 
           isBlocked={depInfo.isBlocked} 
-          isBlocking={depInfo.isBlocking} 
+          isBlocking={depInfo.isBlocking}
+          hasReleasedParent={depInfo.hasReleasedParent}
         />
-        {depInfo.parent && (
+        {depInfo.isBlocked && (
           <DependencyBadge type="blocked" count={1} />
+        )}
+        {depInfo.hasReleasedParent && (
+          <DependencyBadge type="unlocked" count={1} />
         )}
         {depInfo.dependents.length > 0 && (
           <DependencyBadge type="blocking" count={depInfo.dependents.length} />

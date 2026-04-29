@@ -42,10 +42,14 @@ export function TaskCard({ task, onEdit, dependencyInfo }: TaskCardProps) {
           <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-200 dark:border-gray-700">
             <DependencyStatusIcon 
               isBlocked={dependencyInfo.isBlocked} 
-              isBlocking={dependencyInfo.isBlocking} 
+              isBlocking={dependencyInfo.isBlocking}
+              hasReleasedParent={dependencyInfo.hasReleasedParent}
             />
-            {dependencyInfo.parent && (
-              <DependencyBadge type="blocked" task={dependencyInfo.parent} />
+            {dependencyInfo.isBlocked && (
+              <DependencyBadge type="blocked" task={dependencyInfo.parent || undefined} />
+            )}
+            {dependencyInfo.hasReleasedParent && (
+              <DependencyBadge type="unlocked" task={dependencyInfo.parent || undefined} />
             )}
             {dependencyInfo.dependents.length > 0 && (
               <DependencyBadge type="blocking" count={dependencyInfo.dependents.length} />

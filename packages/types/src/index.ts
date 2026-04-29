@@ -114,6 +114,7 @@ export interface TaskDependencyInfo {
   chainLength: number;         // Depth in dependency tree
   isBlocked: boolean;          // True if parent exists and not Released
   isBlocking: boolean;         // True if dependents exist
+  hasReleasedParent: boolean;  // True if parent exists and is Released
 }
 
 export interface GetDependentsResponse {

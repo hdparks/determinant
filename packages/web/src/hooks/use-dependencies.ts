@@ -37,6 +37,7 @@ export function useDependencyInfo(task: Task | undefined): TaskDependencyInfo | 
   
   const parent = chain && chain.length > 1 ? chain[1] : null;
   const isBlocked = parent !== null && parent.state !== 'Released';
+  const hasReleasedParent = parent !== null && parent.state === 'Released';
   const isBlocking = (dependents?.length || 0) > 0;
   
   return {
@@ -45,6 +46,7 @@ export function useDependencyInfo(task: Task | undefined): TaskDependencyInfo | 
     chainLength: chain?.length || 1,
     isBlocked,
     isBlocking,
+    hasReleasedParent,
   };
 }
 

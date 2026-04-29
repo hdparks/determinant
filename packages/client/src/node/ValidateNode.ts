@@ -52,7 +52,7 @@ export class ValidateNode extends Node {
     );
     
     const prompt = `
-You are validating an implementation against the original proposal.
+You are validating an implementation against the original proposal. Be constructive, but firm.
 
 ORIGINAL PROPOSAL ARTIFACT:
 Path: ${proposalArtifactPath}
@@ -82,12 +82,11 @@ YOUR JOB:
 6. Create a validation report at: ${artifactPath}
 
 7. The validation report MUST:
-   - Start with a clear SUCCESS or FAILURE status
    - List each verification test and its result
-   - Verify that all proposal requirements are met
    - Include test outputs and evidence
    - If FAILURE: clearly identify what failed and why
    - If SUCCESS: confirm all requirements satisfied
+   - End with a clear SUCCESS or FAILURE status
 
 8. Return ONLY this JSON (no other text):
 {

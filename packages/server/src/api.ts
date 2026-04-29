@@ -630,7 +630,7 @@ router.post('/nodes/:nodeId/approve', async (req: Request, res: Response) => {
         approvalContent += `**Feedback**: ${designInput.feedback}\n\n`;
       }
 
-      childToStage = 'Plan';
+      childToStage = designInput.approved ? 'Plan' : 'Design';
     } 
     else {
       res.status(400).json({ 
